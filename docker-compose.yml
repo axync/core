@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  zkclear-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: zkclear-api
+    restart: unless-stopped
+    environment:
+      - RUST_LOG=${RUST_LOG:-info}
+      - DATA_DIR=/app/data
+      - STORAGE_PATH=/app/data
+      - MAX_QUEUE_SIZE=${MAX_QUEUE_SIZE:-10000}
+      - MAX_TXS_PER_BLOCK=${MAX_TXS_PER_BLOCK:-100}
+      - BLOCK_INTERVAL_SEC=${BLOCK_INTERVAL_SEC:-1}
+      - USE_PLACEHOLDER_PROVER=${USE_PLACEHOLDER_PROVER:-false}
+      - GROTH16_KEYS_DIR=${GROTH16_KEYS_DIR:-}
+    volumes:
+      # Persistent storage for RocksDB
+      - zkclear-data:/app/data
+      # Optional: mount keys directory if using real proofs
+      - ${GROTH16_KEYS_DIR:-./keys}:/app/keys:ro
+    ports:
+      - "${API_PORT:-8080}:8080"
+    networks:
+      - zkclear-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # Optional monitoring service (can be added later)
+  # prometheus:
+  #   image: prom/prometheus:latest
+  #   container_name: zkclear-prometheus
+  #   volumes:
+  #     - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+  #   ports:
+  #     - "9090:9090"
+  #   networks:
+  #     - zkclear-network
+
+volumes:
+  zkclear-data:
+    driver: local
+
+networks:
+  zkclear-network:
+    driver: bridge
+

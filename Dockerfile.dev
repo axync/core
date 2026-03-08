@@ -1,0 +1,21 @@
+# Development Dockerfile for fast development
+FROM rust:latest
+
+WORKDIR /app
+
+# Install additional development tools
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    vim \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy project
+COPY . .
+
+# Pre-compile dependencies for caching
+RUN cargo fetch
+
+# Default: run shell for development
+CMD ["/bin/bash"]
+

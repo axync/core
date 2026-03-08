@@ -1,0 +1,8 @@
+[package]
+name = "zkclear-state"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+zkclear-types = { path = "../types" }
+serde = { version = "1.0", features = ["derive"] }

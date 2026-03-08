@@ -1,0 +1,8 @@
+[package]
+name = "zkclear-stf"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+zkclear-types = { path = "../types" }
+zkclear-state = { path = "../state" }

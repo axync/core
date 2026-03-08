@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  zkclear-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: zkclear-dev
+    volumes:
+      # Mount source code for hot-reload
+      - .:/app
+      # Cache cargo for faster builds
+      - cargo-cache:/usr/local/cargo/registry
+      - cargo-git-cache:/usr/local/cargo/git
+    working_dir: /app
+    stdin_open: true
+    tty: true
+    environment:
+      - RUST_LOG=debug
+      - DATA_DIR=/app/data
+    networks:
+      - zkclear-network
+
+volumes:
+  cargo-cache:
+  cargo-git-cache:
+
+networks:
+  zkclear-network:
+    driver: bridge
+

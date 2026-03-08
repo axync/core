@@ -1,0 +1,61 @@
+[package]
+name = "zkclear-prover"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+zkclear-types = { path = "../types" }
+zkclear-state = { path = "../state" }
+zkclear-stf = { path = "../stf" }
+serde = { version = "1.0", features = ["derive"] }
+serde_bytes = "0.11"
+bincode = "1.3"
+sha2 = "0.10"
+sha3 = "0.10"
+anyhow = "1.0"
+thiserror = "1.0"
+async-trait = "0.1"
+futures = "0.3"
+hex = "0.4"
+chrono = "0.4"
+tokio = { version = "1.0", features = ["rt", "rt-multi-thread", "macros"], optional = true }
+
+# ZK Proof libraries
+# Custom minimal STARK prover
+# Arkworks Groth16 for SNARK proofs (wrapping STARK proofs for on-chain verification)
+# Arkworks is a popular, stable library that works on stable Rust
+ark-groth16 = { version = "0.5", optional = true }
+ark-bn254 = { version = "0.5", optional = true }
+ark-ec = { version = "0.5", optional = true }
+ark-ff = { version = "0.5", optional = true }
+ark-std = { version = "0.5", optional = true }
+ark-serialize = { version = "0.5", optional = true }
+ark-snark = { version = "0.5", optional = true }
+ark-r1cs-std = { version = "0.5", optional = true }
+ark-relations = { version = "0.5", optional = true }
+
+[features]
+default = []
+stark = []  # Custom minimal STARK prover (always enabled, no external dependencies)
+arkworks = ["dep:ark-groth16", "dep:ark-bn254", "dep:ark-ec", "dep:ark-ff", "dep:ark-std", "dep:ark-r1cs-std", "dep:ark-relations", "dep:ark-serialize", "dep:ark-snark"]
+bin = ["tokio"]  # Feature for binary targets that need tokio
+tokio = ["dep:tokio"]  # Feature to enable tokio for async operations
+
+[dev-dependencies]
+tokio = { version = "1.0", features = ["full", "rt", "macros"] }
+
+[[bin]]
+name = "export_verifying_key"
+path = "src/bin/export_verifying_key.rs"
+required-features = ["arkworks"]
+
+[[bin]]
+name = "format_proof_for_solidity"
+path = "src/bin/format_proof_for_solidity.rs"
+required-features = ["arkworks"]
+
+[[bin]]
+name = "generate_and_format_proof"
+path = "src/bin/generate_and_format_proof.rs"
+required-features = ["stark", "arkworks", "bin"]
+
