@@ -5,7 +5,7 @@ use k256::{
 };
 use sha3::{Digest, Keccak256};
 use axync_state::State;
-use axync_types::{Address, Tx, TxKind};
+use axync_types::{Address, Tx};
 
 #[derive(Debug)]
 pub enum ValidationError {
@@ -31,7 +31,7 @@ fn verify_signature(tx: &Tx) -> Result<(), ValidationError> {
 }
 
 fn recover_address(tx: &Tx) -> Result<Address, ValidationError> {
-    let message = tx_hash(tx);
+    let message = eip712_signing_input(tx);
     let message_hash = Keccak256::digest(&message);
 
     let sig_bytes = tx.signature;
@@ -66,72 +66,167 @@ fn recover_address(tx: &Tx) -> Result<Address, ValidationError> {
     Ok(address)
 }
 
-fn tx_hash(tx: &Tx) -> Vec<u8> {
-    let mut data = Vec::new();
-    data.extend_from_slice(&tx.from);
-    data.extend_from_slice(&tx.nonce.to_le_bytes());
+// ── EIP-712 Typed Data Signing ──────────────────────────────────────────────
+//
+// Domain: EIP712Domain(string name, string version)
+//   name = "Axync", version = "1"
+//   No chainId — this is a cross-chain sequencer.
+//
+// Struct types (each includes from + nonce):
+//   Deposit(address from,uint64 nonce,bytes32 txHash,address account,uint16 assetId,uint128 amount,uint64 chainId)
+//   Withdraw(address from,uint64 nonce,uint16 assetId,uint128 amount,address to,uint64 chainId)
+//   CreateDeal(address from,uint64 nonce,uint64 dealId,string visibility,address taker,uint16 assetBase,uint16 assetQuote,uint64 chainIdBase,uint64 chainIdQuote,uint128 amountBase,uint128 priceQuotePerBase)
+//   AcceptDeal(address from,uint64 nonce,uint64 dealId)
+//   CancelDeal(address from,uint64 nonce,uint64 dealId)
 
-    let kind_byte = match tx.kind {
-        TxKind::Deposit => 0u8,
-        TxKind::Withdraw => 1u8,
-        TxKind::CreateDeal => 2u8,
-        TxKind::AcceptDeal => 3u8,
-        TxKind::CancelDeal => 4u8,
-    };
-    data.push(kind_byte);
+/// Build the EIP-712 signing input: \x19\x01 ‖ domainSeparator ‖ structHash
+fn eip712_signing_input(tx: &Tx) -> Vec<u8> {
+    let domain_separator = compute_domain_separator();
+    let struct_hash = compute_struct_hash(tx);
 
-    match &tx.payload {
+    let mut result = Vec::with_capacity(66);
+    result.push(0x19);
+    result.push(0x01);
+    result.extend_from_slice(&domain_separator);
+    result.extend_from_slice(&struct_hash);
+    result
+}
+
+fn compute_domain_separator() -> [u8; 32] {
+    let type_hash = Keccak256::digest(b"EIP712Domain(string name,string version)");
+    let name_hash = Keccak256::digest(b"Axync");
+    let version_hash = Keccak256::digest(b"1");
+
+    let mut data = Vec::with_capacity(96);
+    data.extend_from_slice(&type_hash);
+    data.extend_from_slice(&name_hash);
+    data.extend_from_slice(&version_hash);
+
+    let result = Keccak256::digest(&data);
+    let mut hash = [0u8; 32];
+    hash.copy_from_slice(&result);
+    hash
+}
+
+fn compute_struct_hash(tx: &Tx) -> [u8; 32] {
+    let (type_hash, encoded_fields) = match &tx.payload {
         axync_types::TxPayload::Deposit(p) => {
-            data.extend_from_slice(&p.tx_hash);
-            data.extend_from_slice(&p.account);
-            data.extend_from_slice(&p.asset_id.to_le_bytes());
-            data.extend_from_slice(&p.amount.to_le_bytes());
-            data.extend_from_slice(&p.chain_id.to_le_bytes());
+            let type_hash = Keccak256::digest(
+                b"Deposit(address from,uint64 nonce,bytes32 txHash,address account,uint16 assetId,uint128 amount,uint64 chainId)"
+            );
+            let mut fields = Vec::new();
+            fields.extend_from_slice(&encode_address(&tx.from));
+            fields.extend_from_slice(&encode_uint64(tx.nonce));
+            fields.extend_from_slice(&encode_bytes32(&p.tx_hash));
+            fields.extend_from_slice(&encode_address(&p.account));
+            fields.extend_from_slice(&encode_uint16(p.asset_id));
+            fields.extend_from_slice(&encode_uint128(p.amount));
+            fields.extend_from_slice(&encode_uint64(p.chain_id));
+            (type_hash, fields)
         }
         axync_types::TxPayload::Withdraw(p) => {
-            data.extend_from_slice(&p.asset_id.to_le_bytes());
-            data.extend_from_slice(&p.amount.to_le_bytes());
-            data.extend_from_slice(&p.to);
-            data.extend_from_slice(&p.chain_id.to_le_bytes());
+            let type_hash = Keccak256::digest(
+                b"Withdraw(address from,uint64 nonce,uint16 assetId,uint128 amount,address to,uint64 chainId)"
+            );
+            let mut fields = Vec::new();
+            fields.extend_from_slice(&encode_address(&tx.from));
+            fields.extend_from_slice(&encode_uint64(tx.nonce));
+            fields.extend_from_slice(&encode_uint16(p.asset_id));
+            fields.extend_from_slice(&encode_uint128(p.amount));
+            fields.extend_from_slice(&encode_address(&p.to));
+            fields.extend_from_slice(&encode_uint64(p.chain_id));
+            (type_hash, fields)
         }
         axync_types::TxPayload::CreateDeal(p) => {
-            data.extend_from_slice(&p.deal_id.to_le_bytes());
-            data.push(p.visibility as u8);
-            if let Some(taker) = p.taker {
-                data.push(1);
-                data.extend_from_slice(&taker);
-            } else {
-                data.push(0);
-            }
-            data.extend_from_slice(&p.asset_base.to_le_bytes());
-            data.extend_from_slice(&p.asset_quote.to_le_bytes());
-            data.extend_from_slice(&p.chain_id_base.to_le_bytes());
-            data.extend_from_slice(&p.chain_id_quote.to_le_bytes());
-            data.extend_from_slice(&p.amount_base.to_le_bytes());
-            data.extend_from_slice(&p.price_quote_per_base.to_le_bytes());
+            let type_hash = Keccak256::digest(
+                b"CreateDeal(address from,uint64 nonce,uint64 dealId,string visibility,address taker,uint16 assetBase,uint16 assetQuote,uint64 chainIdBase,uint64 chainIdQuote,uint128 amountBase,uint128 priceQuotePerBase)"
+            );
+            let mut fields = Vec::new();
+            fields.extend_from_slice(&encode_address(&tx.from));
+            fields.extend_from_slice(&encode_uint64(tx.nonce));
+            fields.extend_from_slice(&encode_uint64(p.deal_id));
+            let vis_str = match p.visibility {
+                axync_types::DealVisibility::Public => "Public",
+                axync_types::DealVisibility::Direct => "Direct",
+            };
+            fields.extend_from_slice(&encode_string(vis_str));
+            let taker_addr = p.taker.unwrap_or([0u8; 20]);
+            fields.extend_from_slice(&encode_address(&taker_addr));
+            fields.extend_from_slice(&encode_uint16(p.asset_base));
+            fields.extend_from_slice(&encode_uint16(p.asset_quote));
+            fields.extend_from_slice(&encode_uint64(p.chain_id_base));
+            fields.extend_from_slice(&encode_uint64(p.chain_id_quote));
+            fields.extend_from_slice(&encode_uint128(p.amount_base));
+            fields.extend_from_slice(&encode_uint128(p.price_quote_per_base));
+            (type_hash, fields)
         }
         axync_types::TxPayload::AcceptDeal(p) => {
-            data.extend_from_slice(&p.deal_id.to_le_bytes());
-            if let Some(amount) = p.amount {
-                data.push(1);
-                data.extend_from_slice(&amount.to_le_bytes());
-            } else {
-                data.push(0);
-            }
+            let type_hash = Keccak256::digest(
+                b"AcceptDeal(address from,uint64 nonce,uint64 dealId)"
+            );
+            let mut fields = Vec::new();
+            fields.extend_from_slice(&encode_address(&tx.from));
+            fields.extend_from_slice(&encode_uint64(tx.nonce));
+            fields.extend_from_slice(&encode_uint64(p.deal_id));
+            (type_hash, fields)
         }
         axync_types::TxPayload::CancelDeal(p) => {
-            data.extend_from_slice(&p.deal_id.to_le_bytes());
+            let type_hash = Keccak256::digest(
+                b"CancelDeal(address from,uint64 nonce,uint64 dealId)"
+            );
+            let mut fields = Vec::new();
+            fields.extend_from_slice(&encode_address(&tx.from));
+            fields.extend_from_slice(&encode_uint64(tx.nonce));
+            fields.extend_from_slice(&encode_uint64(p.deal_id));
+            (type_hash, fields)
         }
-    }
+    };
 
-    let prefix = b"\x19Ethereum Signed Message:\n";
-    let message_len = data.len();
-    let mut prefixed = Vec::new();
-    prefixed.extend_from_slice(prefix);
-    prefixed.extend_from_slice(message_len.to_string().as_bytes());
-    prefixed.extend_from_slice(&data);
+    let mut data = Vec::new();
+    data.extend_from_slice(&type_hash);
+    data.extend_from_slice(&encoded_fields);
 
-    prefixed
+    let result = Keccak256::digest(&data);
+    let mut hash = [0u8; 32];
+    hash.copy_from_slice(&result);
+    hash
+}
+
+// ── ABI Encoding Helpers (EIP-712: big-endian, 32-byte words) ──────────────
+
+fn encode_address(addr: &[u8; 20]) -> [u8; 32] {
+    let mut result = [0u8; 32];
+    result[12..32].copy_from_slice(addr);
+    result
+}
+
+fn encode_uint64(val: u64) -> [u8; 32] {
+    let mut result = [0u8; 32];
+    result[24..32].copy_from_slice(&val.to_be_bytes());
+    result
+}
+
+fn encode_uint16(val: u16) -> [u8; 32] {
+    let mut result = [0u8; 32];
+    result[30..32].copy_from_slice(&val.to_be_bytes());
+    result
+}
+
+fn encode_uint128(val: u128) -> [u8; 32] {
+    let mut result = [0u8; 32];
+    result[16..32].copy_from_slice(&val.to_be_bytes());
+    result
+}
+
+fn encode_bytes32(val: &[u8; 32]) -> [u8; 32] {
+    *val
+}
+
+fn encode_string(val: &str) -> [u8; 32] {
+    let hash = Keccak256::digest(val.as_bytes());
+    let mut result = [0u8; 32];
+    result.copy_from_slice(&hash);
+    result
 }
 
 fn check_nonce(state: &State, tx: &Tx) -> Result<(), ValidationError> {
