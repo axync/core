@@ -87,6 +87,7 @@ pub async fn rate_limit_middleware(
                 "error": "RateLimitExceeded",
                 "message": "Rate limit exceeded. Please try again later."
             });
+            
             return (StatusCode::TOO_MANY_REQUESTS, axum::Json(body)).into_response();
         }
     }
