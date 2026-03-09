@@ -4,14 +4,14 @@ use axum::{
     response::Json,
 };
 use std::collections::HashMap;
-use zkclear_types::{DealVisibility, TxKind, TxPayload};
+use axync_types::{DealVisibility, TxKind, TxPayload};
 use std::sync::Arc;
-use zkclear_sequencer::Sequencer;
-use zkclear_storage::Storage;
-use zkclear_types::{AssetId, BlockId, DealId};
+use axync_sequencer::Sequencer;
+use axync_storage::Storage;
+use axync_types::{AssetId, BlockId, DealId};
 
 use crate::types::*;
-use zkclear_sequencer::security::{sanitize_string, validate_hex_string};
+use axync_sequencer::security::{sanitize_string, validate_hex_string};
 
 pub struct ApiState {
     pub sequencer: Arc<Sequencer>,
@@ -77,7 +77,7 @@ pub async fn get_account_balance(
         .iter()
         .find(|b| b.asset_id == asset_id)
         .map(|b| (b.chain_id, b.amount))
-        .unwrap_or((zkclear_types::chain_ids::ETHEREUM, 0));
+        .unwrap_or((axync_types::chain_ids::ETHEREUM, 0));
 
     Ok(Json(AccountBalanceResponse {
         address: addr,
@@ -140,7 +140,7 @@ pub async fn get_account_state(
         .values()
         .filter(|deal| {
             (deal.maker == addr || deal.taker == Some(addr))
-                && matches!(deal.status, zkclear_types::DealStatus::Pending)
+                && matches!(deal.status, axync_types::DealStatus::Pending)
         })
         .map(|deal| deal.id)
         .collect();
@@ -330,27 +330,27 @@ pub async fn get_supported_chains() -> Json<serde_json::Value> {
     Json(serde_json::json!({
         "chains": [
             {
-                "chain_id": zkclear_types::chain_ids::ETHEREUM,
+                "chain_id": axync_types::chain_ids::ETHEREUM,
                 "name": "Ethereum"
             },
             {
-                "chain_id": zkclear_types::chain_ids::POLYGON,
+                "chain_id": axync_types::chain_ids::POLYGON,
                 "name": "Polygon"
             },
             {
-                "chain_id": zkclear_types::chain_ids::BASE,
+                "chain_id": axync_types::chain_ids::BASE,
                 "name": "Base"
             },
             {
-                "chain_id": zkclear_types::chain_ids::ARBITRUM,
+                "chain_id": axync_types::chain_ids::ARBITRUM,
                 "name": "Arbitrum"
             },
             {
-                "chain_id": zkclear_types::chain_ids::OPTIMISM,
+                "chain_id": axync_types::chain_ids::OPTIMISM,
                 "name": "Optimism"
             },
             {
-                "chain_id": zkclear_types::chain_ids::BASE,
+                "chain_id": axync_types::chain_ids::BASE,
                 "name": "Base"
             }
         ]
@@ -408,7 +408,7 @@ pub async fn jsonrpc_handler(
                 }
             };
 
-            let tx: zkclear_types::Tx = match bincode::deserialize(&tx_bytes) {
+            let tx: axync_types::Tx = match bincode::deserialize(&tx_bytes) {
                 Ok(tx) => tx,
                 Err(_) => {
                     return Json(JsonRpcResponse {
@@ -433,7 +433,7 @@ pub async fn jsonrpc_handler(
                         "status": "queued"
                     }))
                 }
-                Err(zkclear_sequencer::SequencerError::QueueFull) => {
+                Err(axync_sequencer::SequencerError::QueueFull) => {
                     return Json(JsonRpcResponse {
                         jsonrpc: "2.0".to_string(),
                         result: None,
@@ -445,7 +445,7 @@ pub async fn jsonrpc_handler(
                         id: request.id,
                     });
                 }
-                Err(zkclear_sequencer::SequencerError::InvalidSignature) => {
+                Err(axync_sequencer::SequencerError::InvalidSignature) => {
                     return Json(JsonRpcResponse {
                         jsonrpc: "2.0".to_string(),
                         result: None,
@@ -457,7 +457,7 @@ pub async fn jsonrpc_handler(
                         id: request.id,
                     });
                 }
-                Err(zkclear_sequencer::SequencerError::InvalidNonce) => {
+                Err(axync_sequencer::SequencerError::InvalidNonce) => {
                     return Json(JsonRpcResponse {
                         jsonrpc: "2.0".to_string(),
                         result: None,
@@ -523,7 +523,7 @@ pub async fn submit_transaction(
     Json(request): Json<crate::types::SubmitTransactionRequest>,
 ) -> Result<Json<crate::types::SubmitTransactionResponse>, (StatusCode, Json<ErrorResponse>)> {
     use crate::types::SubmitTransactionRequest;
-    use zkclear_types::Tx;
+    use axync_types::Tx;
 
     let (tx, _from_address) = match request {
         SubmitTransactionRequest::Deposit {
@@ -612,7 +612,7 @@ pub async fn submit_transaction(
                 from: addr,
                 nonce,
                 kind: TxKind::Deposit,
-                payload: TxPayload::Deposit(zkclear_types::Deposit {
+                payload: TxPayload::Deposit(axync_types::Deposit {
                     tx_hash: tx_hash_array,
                     account: addr,
                     asset_id,
@@ -717,7 +717,7 @@ pub async fn submit_transaction(
                 from: from_address,
                 nonce,
                 kind: TxKind::CreateDeal,
-                payload: TxPayload::CreateDeal(zkclear_types::CreateDeal {
+                payload: TxPayload::CreateDeal(axync_types::CreateDeal {
                     deal_id,
                     visibility: visibility_enum,
                     taker: taker_addr,
@@ -795,7 +795,7 @@ pub async fn submit_transaction(
                 from: from_address,
                 nonce,
                 kind: TxKind::AcceptDeal,
-                payload: TxPayload::AcceptDeal(zkclear_types::AcceptDeal {
+                payload: TxPayload::AcceptDeal(axync_types::AcceptDeal {
                     deal_id,
                     amount,
                 }),
@@ -863,7 +863,7 @@ pub async fn submit_transaction(
                 from: from_address,
                 nonce,
                 kind: TxKind::CancelDeal,
-                payload: TxPayload::CancelDeal(zkclear_types::CancelDeal { deal_id }),
+                payload: TxPayload::CancelDeal(axync_types::CancelDeal { deal_id }),
                 signature: sig,
             };
 
@@ -955,7 +955,7 @@ pub async fn submit_transaction(
                 from: from_address,
                 nonce,
                 kind: TxKind::Withdraw,
-                payload: TxPayload::Withdraw(zkclear_types::Withdraw {
+                payload: TxPayload::Withdraw(axync_types::Withdraw {
                     asset_id,
                     amount,
                     to: to_address,
@@ -978,28 +978,28 @@ pub async fn submit_transaction(
                 status: "queued".to_string(),
             }))
         }
-        Err(zkclear_sequencer::SequencerError::QueueFull) => Err((
+        Err(axync_sequencer::SequencerError::QueueFull) => Err((
             StatusCode::SERVICE_UNAVAILABLE,
             Json(ErrorResponse {
                 error: "QueueFull".to_string(),
                 message: "Transaction queue is full".to_string(),
             }),
         )),
-        Err(zkclear_sequencer::SequencerError::InvalidSignature) => Err((
+        Err(axync_sequencer::SequencerError::InvalidSignature) => Err((
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse {
                 error: "InvalidSignature".to_string(),
                 message: "Transaction signature is invalid".to_string(),
             }),
         )),
-        Err(zkclear_sequencer::SequencerError::InvalidNonce) => Err((
+        Err(axync_sequencer::SequencerError::InvalidNonce) => Err((
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse {
                 error: "InvalidNonce".to_string(),
                 message: "Transaction nonce is invalid".to_string(),
             }),
         )),
-        Err(zkclear_sequencer::SequencerError::ExecutionFailed(stf_err)) => {
+        Err(axync_sequencer::SequencerError::ExecutionFailed(stf_err)) => {
             // Extract error message from StfError
             let error_msg = format!("{:?}", stf_err);
             let (error_code, message): (String, String) = if error_msg.contains("BalanceTooLow") {

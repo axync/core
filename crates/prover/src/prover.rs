@@ -3,8 +3,8 @@ use crate::merkle::{hash_withdrawal, verify_merkle_proof, MerkleTree};
 use crate::nullifier::generate_nullifier_from_withdrawal;
 use crate::snark::SnarkProver;
 use crate::stark::StarkProver;
-use zkclear_state::State;
-use zkclear_types::{Address, Block, BlockProof, Withdraw, WithdrawalProof};
+use axync_state::State;
+use axync_types::{Address, Block, BlockProof, Withdraw, WithdrawalProof};
 
 /// Configuration for the ZK prover
 #[derive(Debug, Clone)]
@@ -261,7 +261,7 @@ impl Prover {
 
         // Extract withdrawals from block transactions
         for tx in &block.transactions {
-            if let zkclear_types::TxPayload::Withdraw(w) = &tx.payload {
+            if let axync_types::TxPayload::Withdraw(w) = &tx.payload {
                 let leaf = hash_withdrawal(tx.from, w.asset_id, w.amount, w.chain_id);
                 tree.add_leaf(leaf);
             }
@@ -282,7 +282,7 @@ impl Prover {
         // Build tree and find withdrawal index
         let mut current_index = 0;
         for tx in &block.transactions {
-            if let zkclear_types::TxPayload::Withdraw(w) = &tx.payload {
+            if let axync_types::TxPayload::Withdraw(w) = &tx.payload {
                 let leaf = hash_withdrawal(tx.from, w.asset_id, w.amount, w.chain_id);
                 tree.add_leaf(leaf);
 

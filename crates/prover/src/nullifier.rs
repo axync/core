@@ -1,5 +1,5 @@
 use sha3::{Digest, Keccak256};
-use zkclear_types::{Address, AssetId, ChainId};
+use axync_types::{Address, AssetId, ChainId};
 
 /// Generate a nullifier for a withdrawal to prevent double-spending
 ///

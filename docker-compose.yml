@@ -1,11 +1,11 @@
 version: '3.8'
 
 services:
-  zkclear-api:
+  axync-api:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: zkclear-api
+    container_name: axync-api
     restart: unless-stopped
     environment:
       - RUST_LOG=${RUST_LOG:-info}
@@ -18,13 +18,13 @@ services:
       - GROTH16_KEYS_DIR=${GROTH16_KEYS_DIR:-}
     volumes:
       # Persistent storage for RocksDB
-      - zkclear-data:/app/data
+      - axync-data:/app/data
       # Optional: mount keys directory if using real proofs
       - ${GROTH16_KEYS_DIR:-./keys}:/app/keys:ro
     ports:
       - "${API_PORT:-8080}:8080"
     networks:
-      - zkclear-network
+      - axync-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
@@ -43,19 +43,19 @@ services:
   # Optional monitoring service (can be added later)
   # prometheus:
   #   image: prom/prometheus:latest
-  #   container_name: zkclear-prometheus
+  #   container_name: axync-prometheus
   #   volumes:
   #     - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
   #   ports:
   #     - "9090:9090"
   #   networks:
-  #     - zkclear-network
+  #     - axync-network
 
 volumes:
-  zkclear-data:
+  axync-data:
     driver: local
 
 networks:
-  zkclear-network:
+  axync-network:
     driver: bridge
 

@@ -1,5 +1,5 @@
-use zkclear_state::State;
-use zkclear_types::{Block, BlockId, Deal, DealId, Tx};
+use axync_state::State;
+use axync_types::{Block, BlockId, Deal, DealId, Tx};
 
 #[derive(Debug)]
 pub enum StorageError {

@@ -5,7 +5,7 @@ use serde_json::Value;
 use std::process::{Command, Stdio};
 use std::time::Duration;
 use tokio::time::sleep;
-use zkclear_watcher::{ChainConfig, RpcClient};
+use axync_watcher::{ChainConfig, RpcClient};
 
 const HARDHAT_RPC: &str = "http://127.0.0.1:8545";
 
@@ -27,7 +27,7 @@ impl HardhatNode {
         // Start Hardhat node
         // Note: Path is relative to workspace root
         let contracts_dir = std::env::var("CONTRACTS_DIR")
-            .unwrap_or_else(|_| "../../../../contracts/zkclear-contracts".to_string());
+            .unwrap_or_else(|_| "../../../../contracts/axync-contracts".to_string());
 
         let cmd = Command::new("npx")
             .args(&["hardhat", "node"])
@@ -81,7 +81,7 @@ impl Drop for HardhatNode {
 pub async fn deploy_contract() -> Result<String> {
     // Deploy DepositContract via Hardhat
     let contracts_dir = std::env::var("CONTRACTS_DIR")
-        .unwrap_or_else(|_| "../../../../contracts/zkclear-contracts".to_string());
+        .unwrap_or_else(|_| "../../../../contracts/axync-contracts".to_string());
 
     // Try to read from environment first
     if let Ok(address) = std::env::var("TEST_DEPOSIT_CONTRACT_ADDRESS") {

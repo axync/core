@@ -1,4 +1,4 @@
-//! Minimal STARK prover for ZKClear state transition verification
+//! Minimal STARK prover for Axync state transition verification
 //!
 //! This module implements a minimal STARK prover without external dependencies.
 //! It uses standard cryptographic primitives (SHA256, Merkle trees) to generate
@@ -12,9 +12,9 @@
 
 use crate::error::ProverError;
 use sha2::{Digest, Sha256};
-use zkclear_state::State;
-use zkclear_stf::apply_tx;
-use zkclear_types::Block;
+use axync_state::State;
+use axync_stf::apply_tx;
+use axync_types::Block;
 
 /// Public inputs for block state transition
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

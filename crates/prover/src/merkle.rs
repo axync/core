@@ -1,6 +1,6 @@
 use crate::error::ProverError;
 use sha2::{Digest, Sha256};
-use zkclear_types::{Address, AssetId, ChainId};
+use axync_types::{Address, AssetId, ChainId};
 
 /// Merkle tree for state roots and withdrawals roots
 pub struct MerkleTree {

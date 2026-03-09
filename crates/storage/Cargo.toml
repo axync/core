@@ -1,5 +1,5 @@
 [package]
-name = "zkclear-storage"
+name = "axync-storage"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,8 +8,8 @@ default = []
 rocksdb = ["dep:rocksdb"]
 
 [dependencies]
-zkclear-types = { path = "../types" }
-zkclear-state = { path = "../state" }
+axync-types = { path = "../types" }
+axync-state = { path = "../state" }
 serde = { version = "1.0", features = ["derive"] }
 bincode = "1.3"
 rocksdb = { version = "0.21", optional = true }

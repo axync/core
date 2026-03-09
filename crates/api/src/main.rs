@@ -2,21 +2,21 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::time::{interval, Duration};
-use zkclear_api::{create_router, ApiState};
-use zkclear_prover::{Prover, ProverConfig};
-use zkclear_sequencer::Sequencer;
-use zkclear_sequencer::SequencerError;
+use axync_api::{create_router, ApiState};
+use axync_prover::{Prover, ProverConfig};
+use axync_sequencer::Sequencer;
+use axync_sequencer::SequencerError;
 #[cfg(not(feature = "rocksdb"))]
-use zkclear_storage::InMemoryStorage;
+use axync_storage::InMemoryStorage;
 #[cfg(feature = "rocksdb")]
-use zkclear_storage::RocksDBStorage;
-use zkclear_watcher::{Watcher, WatcherConfig};
+use axync_storage::RocksDBStorage;
+use axync_watcher::{Watcher, WatcherConfig};
 
 fn get_block_interval_seconds() -> u64 {
     std::env::var("BLOCK_INTERVAL_SEC")
         .ok()
         .and_then(|v| v.parse().ok())
-        .unwrap_or(zkclear_sequencer::config::DEFAULT_BLOCK_INTERVAL_SECONDS)
+        .unwrap_or(axync_sequencer::config::DEFAULT_BLOCK_INTERVAL_SECONDS)
 }
 
 fn get_storage_path() -> PathBuf {
@@ -25,7 +25,7 @@ fn get_storage_path() -> PathBuf {
         .unwrap_or_else(|_| PathBuf::from("./data"))
 }
 
-fn init_storage() -> Result<Arc<dyn zkclear_storage::Storage>, Box<dyn std::error::Error>> {
+fn init_storage() -> Result<Arc<dyn axync_storage::Storage>, Box<dyn std::error::Error>> {
     #[cfg(feature = "rocksdb")]
     {
         let path = get_storage_path();
@@ -104,7 +104,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
     // Initialize storage
     let storage = init_storage()?;
-    let storage_trait: Arc<dyn zkclear_storage::Storage> = storage.clone();
+    let storage_trait: Arc<dyn axync_storage::Storage> = storage.clone();
 
     // Initialize prover (optional - will use placeholders if not configured)
     let prover_config = ProverConfig {
@@ -161,7 +161,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(60);
-    let rate_limit_state = Arc::new(zkclear_api::RateLimitState::new(max_requests, window_seconds));
+    let rate_limit_state = Arc::new(axync_api::RateLimitState::new(max_requests, window_seconds));
 
     let api_state = Arc::new(ApiState {
         sequencer: sequencer.clone(),
@@ -184,9 +184,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let chain_id = std::env::var("ETHEREUM_CHAIN_ID")
                 .ok()
                 .and_then(|v| v.parse().ok())
-                .unwrap_or(zkclear_types::chain_ids::ETHEREUM);
+                .unwrap_or(axync_types::chain_ids::ETHEREUM);
             
-            chains.push(zkclear_watcher::ChainConfig {
+            chains.push(axync_watcher::ChainConfig {
                 chain_id,
                 rpc_url,
                 deposit_contract_address: std::env::var("ETHEREUM_DEPOSIT_CONTRACT")
@@ -223,9 +223,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let chain_id = std::env::var("BASE_CHAIN_ID")
                 .ok()
                 .and_then(|v| v.parse().ok())
-                .unwrap_or(zkclear_types::chain_ids::BASE);
+                .unwrap_or(axync_types::chain_ids::BASE);
             
-            chains.push(zkclear_watcher::ChainConfig {
+            chains.push(axync_watcher::ChainConfig {
                 chain_id,
                 rpc_url,
                 deposit_contract_address: std::env::var("BASE_DEPOSIT_CONTRACT")
@@ -266,7 +266,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .unwrap_or(31337); // Hardhat default
         
         WatcherConfig {
-            chains: vec![zkclear_watcher::ChainConfig {
+            chains: vec![axync_watcher::ChainConfig {
                 chain_id,
                 rpc_url: std::env::var("RPC_URL")
                     .unwrap_or_else(|_| "http://localhost:8545".to_string()),
@@ -306,7 +306,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let watcher = Watcher::new(sequencer.clone(), watcher_config);
 
     let listener = TcpListener::bind("0.0.0.0:8080").await?;
-    println!("ZKClear API server listening on http://0.0.0.0:8080");
+    println!("Axync API server listening on http://0.0.0.0:8080");
 
     // Setup graceful shutdown
     let shutdown_signal = async {

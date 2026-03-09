@@ -8,7 +8,7 @@ use ark_ff::BigInteger;
 
 #[cfg(feature = "arkworks")]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    use zkclear_prover::keys::KeyManager;
+    use axync_prover::keys::KeyManager;
 
     // Load verifying key
     let mut key_manager = KeyManager::new(None);

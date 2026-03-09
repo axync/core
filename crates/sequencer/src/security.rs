@@ -1,4 +1,4 @@
-//! Security utilities and validations for ZKClear sequencer
+//! Security utilities and validations for Axync sequencer
 //!
 //! This module provides security-focused validations and utilities:
 //! - Input sanitization
@@ -7,7 +7,7 @@
 //! - Replay attack prevention
 
 use crate::validation::ValidationError;
-use zkclear_types::Tx;
+use axync_types::Tx;
 
 /// Maximum allowed transaction size (in bytes)
 /// Prevents DoS attacks via oversized transactions
@@ -24,11 +24,11 @@ pub fn validate_tx_size(tx: &Tx) -> Result<(), ValidationError> {
     
     // Check payload size (rough estimate)
     let payload_size = match &tx.payload {
-        zkclear_types::TxPayload::Deposit(_) => 100,
-        zkclear_types::TxPayload::Withdraw(_) => 100,
-        zkclear_types::TxPayload::CreateDeal(_) => 500,
-        zkclear_types::TxPayload::AcceptDeal(_) => 50,
-        zkclear_types::TxPayload::CancelDeal(_) => 50,
+        axync_types::TxPayload::Deposit(_) => 100,
+        axync_types::TxPayload::Withdraw(_) => 100,
+        axync_types::TxPayload::CreateDeal(_) => 500,
+        axync_types::TxPayload::AcceptDeal(_) => 50,
+        axync_types::TxPayload::CancelDeal(_) => 50,
     };
     
     let total_size = size + payload_size;

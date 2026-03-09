@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use zkclear_types::{Account, AccountId, Address, Deal, DealId};
+use axync_types::{Account, AccountId, Address, Deal, DealId};
 
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct State {
@@ -75,7 +75,7 @@ impl State {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zkclear_types::{Balance, Deal, DealStatus, DealVisibility};
+    use axync_types::{Balance, Deal, DealStatus, DealVisibility};
 
     fn dummy_address(byte: u8) -> Address {
         [byte; 20]
@@ -131,7 +131,7 @@ mod tests {
             balances: vec![Balance {
                 asset_id: 0,
                 amount: 100,
-                chain_id: zkclear_types::chain_ids::ETHEREUM,
+                chain_id: axync_types::chain_ids::ETHEREUM,
             }],
             nonce: 5,
             created_at: 1000,
@@ -156,8 +156,8 @@ mod tests {
             taker: None,
             asset_base: 0,
             asset_quote: 1,
-            chain_id_base: zkclear_types::chain_ids::ETHEREUM,
-            chain_id_quote: zkclear_types::chain_ids::ETHEREUM,
+            chain_id_base: axync_types::chain_ids::ETHEREUM,
+            chain_id_quote: axync_types::chain_ids::ETHEREUM,
             amount_base: 1000,
             amount_remaining: 1000,
             price_quote_per_base: 100,

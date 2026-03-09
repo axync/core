@@ -1,11 +1,11 @@
 version: '3.8'
 
 services:
-  zkclear-dev:
+  axync-dev:
     build:
       context: .
       dockerfile: Dockerfile.dev
-    container_name: zkclear-dev
+    container_name: axync-dev
     volumes:
       # Mount source code for hot-reload
       - .:/app
@@ -19,13 +19,13 @@ services:
       - RUST_LOG=debug
       - DATA_DIR=/app/data
     networks:
-      - zkclear-network
+      - axync-network
 
 volumes:
   cargo-cache:
   cargo-git-cache:
 
 networks:
-  zkclear-network:
+  axync-network:
     driver: bridge
 

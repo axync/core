@@ -1,6 +1,6 @@
 use std::sync::Arc;
-use zkclear_sequencer::Sequencer;
-use zkclear_types::{Address, AssetId, ChainId, Deposit, Tx, TxKind, TxPayload};
+use axync_sequencer::Sequencer;
+use axync_types::{Address, AssetId, ChainId, Deposit, Tx, TxKind, TxPayload};
 
 pub struct EventProcessor {
     sequencer: Arc<Sequencer>,

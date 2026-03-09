@@ -1,8 +1,8 @@
 [package]
-name = "zkclear-stf"
+name = "axync-stf"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-zkclear-types = { path = "../types" }
-zkclear-state = { path = "../state" }
+axync-types = { path = "../types" }
+axync-state = { path = "../state" }

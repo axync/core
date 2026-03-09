@@ -1,8 +1,8 @@
 use crate::storage_trait::{Storage, StorageError, TxId};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
-use zkclear_state::State;
-use zkclear_types::{Block, BlockId, Deal, DealId, Tx};
+use axync_state::State;
+use axync_types::{Block, BlockId, Deal, DealId, Tx};
 
 pub struct InMemoryStorage {
     blocks: Arc<RwLock<HashMap<BlockId, Block>>>,
@@ -127,7 +127,7 @@ impl Default for InMemoryStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zkclear_types::{
+    use axync_types::{
         Address, Deal, DealStatus, DealVisibility, Deposit, Tx, TxKind, TxPayload,
     };
 
@@ -146,7 +146,7 @@ mod tests {
                 account: from,
                 asset_id: 0,
                 amount: 100,
-                chain_id: zkclear_types::chain_ids::ETHEREUM,
+                chain_id: axync_types::chain_ids::ETHEREUM,
             }),
             signature: [0u8; 65],
         }
@@ -220,8 +220,8 @@ mod tests {
             taker: None,
             asset_base: 0,
             asset_quote: 1,
-            chain_id_base: zkclear_types::chain_ids::ETHEREUM,
-            chain_id_quote: zkclear_types::chain_ids::ETHEREUM,
+            chain_id_base: axync_types::chain_ids::ETHEREUM,
+            chain_id_quote: axync_types::chain_ids::ETHEREUM,
             amount_base: 1000,
             amount_remaining: 1000,
             price_quote_per_base: 100,
@@ -279,8 +279,8 @@ mod tests {
                 taker: None,
                 asset_base: 0,
                 asset_quote: 1,
-                chain_id_base: zkclear_types::chain_ids::ETHEREUM,
-                chain_id_quote: zkclear_types::chain_ids::ETHEREUM,
+                chain_id_base: axync_types::chain_ids::ETHEREUM,
+                chain_id_quote: axync_types::chain_ids::ETHEREUM,
                 amount_base: 1000,
                 amount_remaining: 1000,
                 price_quote_per_base: 100,

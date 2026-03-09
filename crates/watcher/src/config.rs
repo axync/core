@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use zkclear_types::ChainId;
+use axync_types::ChainId;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChainConfig {
@@ -22,7 +22,7 @@ pub struct WatcherConfig {
 impl Default for ChainConfig {
     fn default() -> Self {
         Self {
-            chain_id: zkclear_types::chain_ids::ETHEREUM,
+            chain_id: axync_types::chain_ids::ETHEREUM,
             rpc_url: std::env::var("RPC_URL")
                 .unwrap_or_else(|_| "https://eth.llamarpc.com".to_string()),
             deposit_contract_address: std::env::var("DEPOSIT_CONTRACT_ADDRESS")
@@ -60,7 +60,7 @@ impl Default for WatcherConfig {
         Self {
             chains: vec![
                 ChainConfig {
-                    chain_id: zkclear_types::chain_ids::ETHEREUM,
+                    chain_id: axync_types::chain_ids::ETHEREUM,
                     rpc_url: std::env::var("ETHEREUM_RPC_URL")
                         .unwrap_or_else(|_| "https://eth.llamarpc.com".to_string()),
                     deposit_contract_address: std::env::var("ETHEREUM_DEPOSIT_CONTRACT")
@@ -75,7 +75,7 @@ impl Default for WatcherConfig {
                     reorg_safety_blocks: 10,
                 },
                 ChainConfig {
-                    chain_id: zkclear_types::chain_ids::BASE,
+                    chain_id: axync_types::chain_ids::BASE,
                     rpc_url: std::env::var("BASE_RPC_URL")
                         .unwrap_or_else(|_| "https://mainnet.base.org".to_string()),
                     deposit_contract_address: std::env::var("BASE_DEPOSIT_CONTRACT")

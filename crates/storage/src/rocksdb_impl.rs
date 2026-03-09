@@ -6,8 +6,8 @@ use rocksdb::{ColumnFamilyDescriptor, Options, DB};
 use std::path::Path;
 #[cfg(feature = "rocksdb")]
 use std::sync::Arc;
-use zkclear_state::State;
-use zkclear_types::{Block, BlockId, Deal, DealId, Tx};
+use axync_state::State;
+use axync_types::{Block, BlockId, Deal, DealId, Tx};
 
 #[cfg(feature = "rocksdb")]
 const CF_BLOCKS: &str = "blocks";

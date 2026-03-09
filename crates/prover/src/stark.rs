@@ -86,7 +86,7 @@ impl StarkProver for MinimalStarkProver {
         block_data: &[u8],
     ) -> Result<Vec<u8>, ProverError> {
         use crate::air::{BlockTransitionInputs, BlockTransitionPrivateInputs};
-        use zkclear_types::Block;
+        use axync_types::Block;
 
         // Deserialize block to extract metadata
         let block: Block = bincode::deserialize(block_data).map_err(|e| {

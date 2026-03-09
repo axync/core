@@ -9,7 +9,7 @@ pub use event_processor::EventProcessor;
 pub use rpc_client::RpcClient;
 
 use std::sync::Arc;
-use zkclear_sequencer::Sequencer;
+use axync_sequencer::Sequencer;
 
 pub struct Watcher {
     sequencer: Arc<Sequencer>,

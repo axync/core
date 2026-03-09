@@ -1,7 +1,7 @@
 //! Security tests for sequencer validation and security checks
 
 use crate::security::*;
-use zkclear_types::{Address, Tx, TxKind, TxPayload, Deposit};
+use axync_types::{Address, Tx, TxKind, TxPayload, Deposit};
 
 #[test]
 fn test_validate_address_rejects_zero() {

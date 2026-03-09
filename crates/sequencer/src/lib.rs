@@ -4,11 +4,11 @@ mod validation;
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
-use zkclear_prover::{Prover, ProverConfig, ProverError};
-use zkclear_state::State;
-use zkclear_stf::{apply_block, StfError};
-use zkclear_storage::Storage;
-use zkclear_types::{Block, BlockId, Tx};
+use axync_prover::{Prover, ProverConfig, ProverError};
+use axync_state::State;
+use axync_stf::{apply_block, StfError};
+use axync_storage::Storage;
+use axync_types::{Block, BlockId, Tx};
 
 use config::{DEFAULT_MAX_QUEUE_SIZE, DEFAULT_MAX_TXS_PER_BLOCK, DEFAULT_SNAPSHOT_INTERVAL};
 use security::{validate_address, validate_nonce_gap, validate_tx_size};
@@ -414,12 +414,12 @@ impl Sequencer {
 
     /// Compute withdrawals root from transactions
     fn compute_withdrawals_root(&self, transactions: &[Tx]) -> Result<[u8; 32], SequencerError> {
-        use zkclear_prover::merkle::{hash_withdrawal, MerkleTree};
+        use axync_prover::merkle::{hash_withdrawal, MerkleTree};
 
         let mut tree = MerkleTree::new();
 
         for tx in transactions {
-            if let zkclear_types::TxPayload::Withdraw(w) = &tx.payload {
+            if let axync_types::TxPayload::Withdraw(w) = &tx.payload {
                 let leaf = hash_withdrawal(tx.from, w.asset_id, w.amount, w.chain_id);
                 tree.add_leaf(leaf);
             }
@@ -547,7 +547,7 @@ impl Default for Sequencer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zkclear_types::{Address, Deposit, Tx, TxKind, TxPayload};
+    use axync_types::{Address, Deposit, Tx, TxKind, TxPayload};
 
     fn dummy_tx(id: u64, from: Address, nonce: u64) -> Tx {
         Tx {
@@ -560,7 +560,7 @@ mod tests {
                 account: from,
                 asset_id: 0,
                 amount: 100,
-                chain_id: zkclear_types::chain_ids::ETHEREUM,
+                chain_id: axync_types::chain_ids::ETHEREUM,
             }),
             signature: [0u8; 65],
         }

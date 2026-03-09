@@ -17,7 +17,7 @@ COPY crates ./crates
 
 # Build dependencies and project
 # Use release profile for optimization
-RUN cargo build --release -p zkclear-api --features rocksdb
+RUN cargo build --release -p axync-api --features rocksdb
 
 # Final image
 # Use Ubuntu 24.04 which has GLIBC 2.39 (compatible with rust:latest builds)
@@ -33,26 +33,26 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user for security
-# Remove existing user with UID 1000 if it exists, then create zkclear user
+# Remove existing user with UID 1000 if it exists, then create axync user
 RUN if getent passwd 1000 > /dev/null 2>&1; then \
         EXISTING_USER=$(getent passwd 1000 | cut -d: -f1); \
         userdel -r "$EXISTING_USER" 2>/dev/null || true; \
     fi && \
-    useradd -m -u 1000 zkclear && \
+    useradd -m -u 1000 axync && \
     mkdir -p /app/data && \
-    chown -R zkclear:zkclear /app
+    chown -R axync:axync /app
 
 WORKDIR /app
 
 # Copy compiled binary
-COPY --from=builder /app/target/release/zkclear-api /app/zkclear-api
+COPY --from=builder /app/target/release/axync-api /app/axync-api
 
 # Set ownership
-RUN chown zkclear:zkclear /app/zkclear-api && \
-    chmod +x /app/zkclear-api
+RUN chown axync:axync /app/axync-api && \
+    chmod +x /app/axync-api
 
 # Switch to non-root user
-USER zkclear
+USER axync
 
 # Environment variables
 ENV RUST_LOG=info
@@ -70,5 +70,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 EXPOSE 8080
 
 # Run application
-CMD ["./zkclear-api"]
+CMD ["./axync-api"]
 

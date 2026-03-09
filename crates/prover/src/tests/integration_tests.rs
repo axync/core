@@ -7,13 +7,13 @@ use crate::prover::{Prover, ProverConfig};
 #[cfg(any(feature = "stark", feature = "arkworks"))]
 use bincode;
 #[cfg(any(feature = "stark", feature = "arkworks"))]
-use zkclear_state::State;
+use axync_state::State;
 #[cfg(any(feature = "stark", feature = "arkworks"))]
-use zkclear_stf::apply_tx;
+use axync_stf::apply_tx;
 #[cfg(any(feature = "stark", feature = "arkworks"))]
-use zkclear_types::Block;
+use axync_types::Block;
 #[cfg(any(feature = "stark", feature = "arkworks"))]
-use zkclear_types::{Address, BlockProof, Tx, TxPayload};
+use axync_types::{Address, BlockProof, Tx, TxPayload};
 
 /// Helper to create a test block
 #[cfg(any(feature = "stark", feature = "arkworks"))]
@@ -24,7 +24,7 @@ fn create_test_block(id: u64, num_txs: usize) -> Block {
 /// Helper to create a test block with address offset
 #[cfg(any(feature = "stark", feature = "arkworks"))]
 fn create_test_block_with_offset(id: u64, num_txs: usize, address_offset: usize) -> Block {
-    use zkclear_types::{Deposit, TxKind};
+    use axync_types::{Deposit, TxKind};
 
     let mut transactions = Vec::new();
 

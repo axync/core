@@ -5,7 +5,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
 use tracing::{debug, error, info, warn};
-use zkclear_sequencer::Sequencer;
+use axync_sequencer::Sequencer;
 
 pub struct ChainWatcher {
     pub(crate) config: ChainConfig,
@@ -229,7 +229,7 @@ impl ChainWatcher {
     fn parse_deposit_log(
         &self,
         log: &serde_json::Value,
-    ) -> anyhow::Result<(zkclear_types::Address, zkclear_types::AssetId, u128)> {
+    ) -> anyhow::Result<(axync_types::Address, axync_types::AssetId, u128)> {
         let topics = log["topics"]
             .as_array()
             .ok_or_else(|| anyhow::anyhow!("Missing topics in log"))?;

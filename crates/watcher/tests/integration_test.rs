@@ -10,9 +10,9 @@ use hardhat_helpers::*;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::sleep;
-use zkclear_sequencer::Sequencer;
-use zkclear_storage::InMemoryStorage;
-use zkclear_watcher::{ChainConfig, ChainWatcher};
+use axync_sequencer::Sequencer;
+use axync_storage::InMemoryStorage;
+use axync_watcher::{ChainConfig, ChainWatcher};
 
 // Hardhat default RPC URL
 const HARDHAT_RPC: &str = "http://127.0.0.1:8545";

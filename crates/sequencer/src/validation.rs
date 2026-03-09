@@ -4,8 +4,8 @@ use k256::{
     PublicKey,
 };
 use sha3::{Digest, Keccak256};
-use zkclear_state::State;
-use zkclear_types::{Address, Tx, TxKind};
+use axync_state::State;
+use axync_types::{Address, Tx, TxKind};
 
 #[derive(Debug)]
 pub enum ValidationError {
@@ -81,20 +81,20 @@ fn tx_hash(tx: &Tx) -> Vec<u8> {
     data.push(kind_byte);
 
     match &tx.payload {
-        zkclear_types::TxPayload::Deposit(p) => {
+        axync_types::TxPayload::Deposit(p) => {
             data.extend_from_slice(&p.tx_hash);
             data.extend_from_slice(&p.account);
             data.extend_from_slice(&p.asset_id.to_le_bytes());
             data.extend_from_slice(&p.amount.to_le_bytes());
             data.extend_from_slice(&p.chain_id.to_le_bytes());
         }
-        zkclear_types::TxPayload::Withdraw(p) => {
+        axync_types::TxPayload::Withdraw(p) => {
             data.extend_from_slice(&p.asset_id.to_le_bytes());
             data.extend_from_slice(&p.amount.to_le_bytes());
             data.extend_from_slice(&p.to);
             data.extend_from_slice(&p.chain_id.to_le_bytes());
         }
-        zkclear_types::TxPayload::CreateDeal(p) => {
+        axync_types::TxPayload::CreateDeal(p) => {
             data.extend_from_slice(&p.deal_id.to_le_bytes());
             data.push(p.visibility as u8);
             if let Some(taker) = p.taker {
@@ -110,7 +110,7 @@ fn tx_hash(tx: &Tx) -> Vec<u8> {
             data.extend_from_slice(&p.amount_base.to_le_bytes());
             data.extend_from_slice(&p.price_quote_per_base.to_le_bytes());
         }
-        zkclear_types::TxPayload::AcceptDeal(p) => {
+        axync_types::TxPayload::AcceptDeal(p) => {
             data.extend_from_slice(&p.deal_id.to_le_bytes());
             if let Some(amount) = p.amount {
                 data.push(1);
@@ -119,7 +119,7 @@ fn tx_hash(tx: &Tx) -> Vec<u8> {
                 data.push(0);
             }
         }
-        zkclear_types::TxPayload::CancelDeal(p) => {
+        axync_types::TxPayload::CancelDeal(p) => {
             data.extend_from_slice(&p.deal_id.to_le_bytes());
         }
     }
@@ -148,7 +148,7 @@ fn check_nonce(state: &State, tx: &Tx) -> Result<(), ValidationError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zkclear_types::{Deposit, Tx, TxKind, TxPayload};
+    use axync_types::{Deposit, Tx, TxKind, TxPayload};
 
     fn dummy_address(byte: u8) -> Address {
         [byte; 20]

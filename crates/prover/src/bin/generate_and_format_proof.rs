@@ -8,10 +8,10 @@
 
 use std::fs;
 use std::time::SystemTime;
-use zkclear_prover::{Prover, ProverConfig};
-use zkclear_state::State;
-use zkclear_stf::apply_tx;
-use zkclear_types::{Address, Block, Deposit, Tx, TxKind, TxPayload};
+use axync_prover::{Prover, ProverConfig};
+use axync_state::State;
+use axync_stf::apply_tx;
+use axync_types::{Address, Block, Deposit, Tx, TxKind, TxPayload};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let rt = tokio::runtime::Builder::new_multi_thread()

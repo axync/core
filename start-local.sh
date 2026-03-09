@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# Start ZKClear API locally with Docker
+# Start Axync API locally with Docker
 
-echo "Starting ZKClear API with Docker..."
+echo "Starting Axync API with Docker..."
 
 # Create data directory if it doesn't exist
 mkdir -p ./data
@@ -11,7 +11,7 @@ mkdir -p ./data
 docker-compose -f docker-compose.local.yml up -d
 
 echo ""
-echo "ZKClear API is starting..."
+echo "Axync API is starting..."
 echo "API will be available at: http://localhost:3000"
 echo ""
 echo "To view logs: docker-compose -f docker-compose.local.yml logs -f"

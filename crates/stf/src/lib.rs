@@ -1,5 +1,5 @@
-use zkclear_state::State;
-use zkclear_types::{
+use axync_state::State;
+use axync_types::{
     AcceptDeal, Address, AssetId, Balance, CancelDeal, ChainId, CreateDeal, Deal, DealStatus,
     DealVisibility, Deposit, Tx, TxPayload, Withdraw,
 };
@@ -77,7 +77,7 @@ fn apply_create_deal(
     let is_cross_chain = payload.chain_id_base != payload.chain_id_quote;
 
     let expires_at = payload.expires_at.map(|exp| {
-        use zkclear_types::deal;
+        use axync_types::deal;
         let max_expiry = block_timestamp + deal::MAX_DEAL_DURATION_SECONDS;
         exp.min(max_expiry)
     });
@@ -305,14 +305,14 @@ fn increment_nonce(state: &mut State, owner: Address) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zkclear_types::{Tx, TxKind, TxPayload};
+    use axync_types::{Tx, TxKind, TxPayload};
 
     fn dummy_address(byte: u8) -> Address {
         [byte; 20]
     }
 
     fn default_chain_id() -> ChainId {
-        zkclear_types::chain_ids::ETHEREUM
+        axync_types::chain_ids::ETHEREUM
     }
 
     fn dummy_tx(from: Address, nonce: u64, payload: TxPayload) -> Tx {

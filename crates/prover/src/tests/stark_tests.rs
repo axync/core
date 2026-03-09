@@ -7,18 +7,18 @@ use crate::stark::{MinimalStarkProver, StarkProver};
 #[cfg(feature = "stark")]
 use bincode;
 #[cfg(feature = "stark")]
-use zkclear_state::State;
+use axync_state::State;
 #[cfg(feature = "stark")]
-use zkclear_stf::apply_tx;
+use axync_stf::apply_tx;
 #[cfg(feature = "stark")]
-use zkclear_types::Block;
+use axync_types::Block;
 #[cfg(feature = "stark")]
-use zkclear_types::{Address, Tx, TxPayload};
+use axync_types::{Address, Tx, TxPayload};
 
 /// Helper function to create a test block with transactions
 #[cfg(feature = "stark")]
 fn create_test_block(id: u64, num_txs: usize) -> Block {
-    use zkclear_types::{Deposit, TxKind};
+    use axync_types::{Deposit, TxKind};
 
     let mut transactions = Vec::new();
 

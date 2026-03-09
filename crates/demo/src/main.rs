@@ -1,6 +1,6 @@
-//! ZKClear Demo - Complete User Flow Demonstration
+//! Axync Demo - Complete User Flow Demonstration
 //!
-//! This demo shows the complete flow of ZKClear system:
+//! This demo shows the complete flow of Axync system:
 //! 1. Wallet connection (simulation)
 //! 2. Deposit funds
 //! 3. Create deal
@@ -10,9 +10,9 @@
 //! 7. Withdraw funds
 
 use std::sync::Arc;
-use zkclear_prover::{Prover, ProverConfig};
-use zkclear_sequencer::Sequencer;
-use zkclear_types::{
+use axync_prover::{Prover, ProverConfig};
+use axync_sequencer::Sequencer;
+use axync_types::{
     AcceptDeal, Address, AssetId, CreateDeal, DealVisibility, Deposit, Tx, TxKind, TxPayload,
     Withdraw,
 };
@@ -32,7 +32,7 @@ fn format_hash(hash: &[u8; 32]) -> String {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("================================================================");
-    println!("          ZKClear Demo - Complete User Flow");
+    println!("          Axync Demo - Complete User Flow");
     println!("================================================================");
     println!();
 
@@ -81,8 +81,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Step 3: Depositing funds...");
     let usdc: AssetId = 0;
     let btc: AssetId = 1;
-    let ethereum_chain = zkclear_types::chain_ids::ETHEREUM;
-    let base_chain = zkclear_types::chain_ids::BASE;
+    let ethereum_chain = axync_types::chain_ids::ETHEREUM;
+    let base_chain = axync_types::chain_ids::BASE;
 
     let mut tx_hash_counter = 0u64;
     let mut get_tx_hash = || {

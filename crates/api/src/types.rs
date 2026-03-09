@@ -1,5 +1,5 @@
 use serde::{Deserialize, Deserializer, Serialize};
-use zkclear_types::{Address, AssetId, BlockId, DealId};
+use axync_types::{Address, AssetId, BlockId, DealId};
 
 // Helper to deserialize u128 from string (JSON doesn't support numbers > 2^53)
 fn deserialize_u128_from_string<'de, D>(deserializer: D) -> Result<u128, D::Error>
@@ -119,7 +119,7 @@ where
 pub struct AccountBalanceResponse {
     pub address: Address,
     pub asset_id: AssetId,
-    pub chain_id: zkclear_types::ChainId,
+    pub chain_id: axync_types::ChainId,
     pub amount: u128,
 }
 
@@ -135,7 +135,7 @@ pub struct AccountStateResponse {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BalanceInfo {
     pub asset_id: AssetId,
-    pub chain_id: zkclear_types::ChainId,
+    pub chain_id: axync_types::ChainId,
     pub amount: u128,
 }
 
@@ -146,8 +146,8 @@ pub struct DealDetailsResponse {
     pub taker: Option<Address>,
     pub asset_base: AssetId,
     pub asset_quote: AssetId,
-    pub chain_id_base: zkclear_types::ChainId,
-    pub chain_id_quote: zkclear_types::ChainId,
+    pub chain_id_base: axync_types::ChainId,
+    pub chain_id_quote: axync_types::ChainId,
     pub amount_base: u128,
     pub amount_remaining: u128,
     pub price_quote_per_base: u128,
@@ -238,7 +238,7 @@ pub enum SubmitTransactionRequest {
         asset_id: AssetId,
         #[serde(deserialize_with = "deserialize_u128_from_string")]
         amount: u128,
-        chain_id: zkclear_types::ChainId,
+        chain_id: axync_types::ChainId,
         nonce: u64,
         signature: String, // hex string (65 bytes)
     },
@@ -249,8 +249,8 @@ pub enum SubmitTransactionRequest {
         taker: Option<String>, // hex string
         asset_base: AssetId,
         asset_quote: AssetId,
-        chain_id_base: zkclear_types::ChainId,
-        chain_id_quote: zkclear_types::ChainId,
+        chain_id_base: axync_types::ChainId,
+        chain_id_quote: axync_types::ChainId,
         #[serde(deserialize_with = "deserialize_u128_from_string")]
         amount_base: u128,
         #[serde(deserialize_with = "deserialize_u128_from_string")]
@@ -280,7 +280,7 @@ pub enum SubmitTransactionRequest {
         #[serde(deserialize_with = "deserialize_u128_from_string")]
         amount: u128,
         to: String, // hex string
-        chain_id: zkclear_types::ChainId,
+        chain_id: axync_types::ChainId,
         nonce: u64,
         signature: String, // hex string (65 bytes)
     },

@@ -1,12 +1,12 @@
 [package]
-name = "zkclear-prover"
+name = "axync-prover"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-zkclear-types = { path = "../types" }
-zkclear-state = { path = "../state" }
-zkclear-stf = { path = "../stf" }
+axync-types = { path = "../types" }
+axync-state = { path = "../state" }
+axync-stf = { path = "../stf" }
 serde = { version = "1.0", features = ["derive"] }
 serde_bytes = "0.11"
 bincode = "1.3"

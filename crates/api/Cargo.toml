@@ -1,23 +1,23 @@
 [package]
-name = "zkclear-api"
+name = "axync-api"
 version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "zkclear-api"
+name = "axync-api"
 path = "src/main.rs"
 
 [features]
 default = ["rocksdb"]
-rocksdb = ["zkclear-storage/rocksdb"]
+rocksdb = ["axync-storage/rocksdb"]
 
 [dependencies]
-zkclear-types = { path = "../types" }
-zkclear-state = { path = "../state" }
-zkclear-sequencer = { path = "../sequencer" }
-zkclear-prover = { path = "../prover" }
-zkclear-storage = { path = "../storage" }
-zkclear-watcher = { path = "../watcher" }
+axync-types = { path = "../types" }
+axync-state = { path = "../state" }
+axync-sequencer = { path = "../sequencer" }
+axync-prover = { path = "../prover" }
+axync-storage = { path = "../storage" }
+axync-watcher = { path = "../watcher" }
 axum = "0.7"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
