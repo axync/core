@@ -316,7 +316,16 @@ pub async fn get_block_info(
         block_id: block.id,
         transaction_count: block.transactions.len(),
         timestamp: block.timestamp,
+        state_root: format!("0x{}", hex::encode(block.state_root)),
+        withdrawals_root: format!("0x{}", hex::encode(block.withdrawals_root)),
+        block_proof: format!("0x{}", hex::encode(&block.block_proof)),
         transactions,
+    }))
+}
+
+pub async fn get_current_block_id(State(state): State<Arc<ApiState>>) -> Json<serde_json::Value> {
+    Json(serde_json::json!({
+        "current_block_id": state.sequencer.get_current_block_id()
     }))
 }
 

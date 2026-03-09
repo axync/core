@@ -173,6 +173,9 @@ pub struct BlockInfoResponse {
     pub block_id: BlockId,
     pub transaction_count: usize,
     pub timestamp: u64,
+    pub state_root: String,
+    pub withdrawals_root: String,
+    pub block_proof: String,
     pub transactions: Vec<TransactionInfo>,
 }
 

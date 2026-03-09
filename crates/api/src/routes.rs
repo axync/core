@@ -48,6 +48,7 @@ pub fn create_router(state: Arc<ApiState>) -> Router {
         .route("/api/v1/block/:block_id", get(get_block_info))
         .route("/api/v1/transactions", post(submit_transaction))
         .route("/api/v1/queue/status", get(get_queue_status))
+        .route("/api/v1/current_block", get(get_current_block_id))
         .route("/api/v1/chains", get(get_supported_chains))
         .route("/jsonrpc", post(jsonrpc_handler))
         // Add rate limit state to request extensions
