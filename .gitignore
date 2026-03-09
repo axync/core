@@ -30,3 +30,4 @@ PROJECT_QUESTIONS.md
 docker-compose.local.yml
 
 data
+.DS_Store
