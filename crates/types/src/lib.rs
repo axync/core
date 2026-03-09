@@ -22,6 +22,8 @@ pub enum SupportedChain {
     Arbitrum = constants::chain_ids::ARBITRUM,
     Optimism = constants::chain_ids::OPTIMISM,
     Base = constants::chain_ids::BASE,
+    EthereumSepolia = constants::chain_ids::ETHEREUM_SEPOLIA,
+    BaseSepolia = constants::chain_ids::BASE_SEPOLIA,
 }
 
 impl SupportedChain {
@@ -33,6 +35,8 @@ impl SupportedChain {
             SupportedChain::Arbitrum => constants::chain_ids::ARBITRUM,
             SupportedChain::Optimism => constants::chain_ids::OPTIMISM,
             SupportedChain::Base => constants::chain_ids::BASE,
+            SupportedChain::EthereumSepolia => constants::chain_ids::ETHEREUM_SEPOLIA,
+            SupportedChain::BaseSepolia => constants::chain_ids::BASE_SEPOLIA,
         }
     }
 
@@ -44,6 +48,8 @@ impl SupportedChain {
             constants::chain_ids::ARBITRUM => Some(SupportedChain::Arbitrum),
             constants::chain_ids::OPTIMISM => Some(SupportedChain::Optimism),
             constants::chain_ids::BASE => Some(SupportedChain::Base),
+            constants::chain_ids::ETHEREUM_SEPOLIA => Some(SupportedChain::EthereumSepolia),
+            constants::chain_ids::BASE_SEPOLIA => Some(SupportedChain::BaseSepolia),
             _ => None,
         }
     }

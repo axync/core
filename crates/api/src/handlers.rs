@@ -72,18 +72,20 @@ pub async fn get_account_balance(
         )
     })?;
 
-    let balance = account
+    let balances: Vec<crate::types::AssetBalanceEntry> = account
         .balances
         .iter()
-        .find(|b| b.asset_id == asset_id)
-        .map(|b| (b.chain_id, b.amount))
-        .unwrap_or((axync_types::chain_ids::ETHEREUM, 0));
+        .filter(|b| b.asset_id == asset_id)
+        .map(|b| crate::types::AssetBalanceEntry {
+            chain_id: b.chain_id,
+            amount: b.amount,
+        })
+        .collect();
 
     Ok(Json(AccountBalanceResponse {
         address: addr,
         asset_id,
-        chain_id: balance.0,
-        amount: balance.1,
+        balances,
     }))
 }
 
@@ -350,8 +352,12 @@ pub async fn get_supported_chains() -> Json<serde_json::Value> {
                 "name": "Optimism"
             },
             {
-                "chain_id": axync_types::chain_ids::BASE,
-                "name": "Base"
+                "chain_id": axync_types::chain_ids::ETHEREUM_SEPOLIA,
+                "name": "Ethereum Sepolia"
+            },
+            {
+                "chain_id": axync_types::chain_ids::BASE_SEPOLIA,
+                "name": "Base Sepolia"
             }
         ]
     }))
@@ -971,7 +977,7 @@ pub async fn submit_transaction(
     // Serialize transaction before submitting (for tx_hash generation)
     let tx_hash = hex::encode(&bincode::serialize(&tx).unwrap_or_default());
     
-    match state.sequencer.submit_tx_with_validation(tx, false) {
+    match state.sequencer.submit_tx_with_validation(tx, true) {
         Ok(()) => {
             Ok(Json(crate::types::SubmitTransactionResponse {
                 tx_hash,

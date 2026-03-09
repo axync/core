@@ -5,6 +5,8 @@ pub mod chain_ids {
     pub const ARBITRUM: u64 = 42161;
     pub const OPTIMISM: u64 = 10;
     pub const BASE: u64 = 8453;
+    pub const ETHEREUM_SEPOLIA: u64 = 11155111;
+    pub const BASE_SEPOLIA: u64 = 84532;
 }
 
 pub mod address {

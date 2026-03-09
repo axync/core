@@ -119,6 +119,11 @@ where
 pub struct AccountBalanceResponse {
     pub address: Address,
     pub asset_id: AssetId,
+    pub balances: Vec<AssetBalanceEntry>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AssetBalanceEntry {
     pub chain_id: axync_types::ChainId,
     pub amount: u128,
 }

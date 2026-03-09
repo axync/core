@@ -27,10 +27,20 @@ impl EventProcessor {
             chain_id,
         };
 
+        // Look up the account's current nonce from sequencer state
+        let nonce = {
+            let state_handle = self.sequencer.get_state();
+            let state_guard = state_handle.lock().unwrap();
+            state_guard
+                .get_account_by_address(account)
+                .map(|a| a.nonce)
+                .unwrap_or(0)
+        };
+
         let tx = Tx {
             id: 0,
             from: account,
-            nonce: 0,
+            nonce,
             kind: TxKind::Deposit,
             payload: TxPayload::Deposit(deposit),
             signature: [0u8; 65],

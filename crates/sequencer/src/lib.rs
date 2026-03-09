@@ -6,9 +6,9 @@ use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use axync_prover::{Prover, ProverConfig, ProverError};
 use axync_state::State;
-use axync_stf::{apply_block, StfError};
+use axync_stf::{apply_block, apply_tx, StfError};
 use axync_storage::Storage;
-use axync_types::{Block, BlockId, Tx};
+use axync_types::{Address, Block, BlockId, Tx};
 
 use config::{DEFAULT_MAX_QUEUE_SIZE, DEFAULT_MAX_TXS_PER_BLOCK, DEFAULT_SNAPSHOT_INTERVAL};
 use security::{validate_address, validate_nonce_gap, validate_tx_size};
@@ -287,15 +287,48 @@ impl Sequencer {
         // Note: prev_state_root is computed but not used directly here (used in proof generation)
         let _prev_state_root = self.compute_state_root(&prev_state)?;
 
-        // Apply transactions to a copy of state to get new state
+        // Apply transactions individually, skipping failures.
+        // If a transaction from a sender fails, skip all subsequent transactions
+        // from the same sender (since their nonces would be invalid).
         let mut new_state = prev_state.clone();
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs();
 
-        apply_block(&mut new_state, &transactions, timestamp)
-            .map_err(SequencerError::ExecutionFailed)?;
+        let mut successful_transactions = Vec::new();
+        let mut failed_senders: std::collections::HashSet<Address> = std::collections::HashSet::new();
+
+        for tx in transactions {
+            if failed_senders.contains(&tx.from) {
+                eprintln!(
+                    "Skipping tx (id={}) from sender {:?}: previous tx from same sender failed",
+                    tx.id, tx.from
+                );
+                continue;
+            }
+
+            let mut trial_state = new_state.clone();
+            match apply_tx(&mut trial_state, &tx, timestamp) {
+                Ok(()) => {
+                    new_state = trial_state;
+                    successful_transactions.push(tx);
+                }
+                Err(e) => {
+                    eprintln!(
+                        "Warning: tx (id={}) from sender {:?} failed: {:?}, skipping",
+                        tx.id, tx.from, e
+                    );
+                    failed_senders.insert(tx.from);
+                }
+            }
+        }
+
+        let transactions = successful_transactions;
+
+        if transactions.is_empty() {
+            return Err(SequencerError::NoTransactions);
+        }
 
         let new_state_root = self.compute_state_root(&new_state)?;
         let withdrawals_root = self.compute_withdrawals_root(&transactions)?;

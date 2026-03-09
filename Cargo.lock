@@ -371,6 +371,143 @@ dependencies = [
 ]
 
 [[package]]
+name = "axync-api"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "axync-prover",
+ "axync-sequencer",
+ "axync-state",
+ "axync-storage",
+ "axync-types",
+ "axync-watcher",
+ "bincode",
+ "futures 0.3.31",
+ "hex",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower 0.4.13",
+ "tower-http",
+ "tower-layer 0.1.0",
+ "tracing",
+ "tracing-subscriber 0.3.22",
+]
+
+[[package]]
+name = "axync-demo"
+version = "0.1.0"
+dependencies = [
+ "axync-prover",
+ "axync-sequencer",
+ "axync-types",
+ "hex",
+ "tokio",
+]
+
+[[package]]
+name = "axync-prover"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ark-bn254",
+ "ark-ec",
+ "ark-ff",
+ "ark-groth16",
+ "ark-r1cs-std",
+ "ark-relations",
+ "ark-serialize",
+ "ark-snark",
+ "ark-std",
+ "async-trait",
+ "axync-state",
+ "axync-stf",
+ "axync-types",
+ "bincode",
+ "chrono",
+ "futures 0.3.31",
+ "hex",
+ "serde",
+ "serde_bytes",
+ "sha2",
+ "sha3",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
+name = "axync-sequencer"
+version = "0.1.0"
+dependencies = [
+ "axync-prover",
+ "axync-state",
+ "axync-stf",
+ "axync-storage",
+ "axync-types",
+ "bincode",
+ "futures 0.3.31",
+ "k256",
+ "serde",
+ "sha2",
+ "sha3",
+ "tokio",
+]
+
+[[package]]
+name = "axync-state"
+version = "0.1.0"
+dependencies = [
+ "axync-types",
+ "serde",
+]
+
+[[package]]
+name = "axync-stf"
+version = "0.1.0"
+dependencies = [
+ "axync-state",
+ "axync-types",
+]
+
+[[package]]
+name = "axync-storage"
+version = "0.1.0"
+dependencies = [
+ "axync-state",
+ "axync-types",
+ "bincode",
+ "rocksdb",
+ "serde",
+]
+
+[[package]]
+name = "axync-types"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_bytes",
+]
+
+[[package]]
+name = "axync-watcher"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axync-sequencer",
+ "axync-storage",
+ "axync-types",
+ "futures 0.3.31",
+ "hex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-test",
+ "tracing",
+ "tracing-subscriber 0.3.22",
+]
+
+[[package]]
 name = "base16ct"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3066,143 +3203,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.111",
-]
-
-[[package]]
-name = "zkclear-api"
-version = "0.1.0"
-dependencies = [
- "axum",
- "bincode",
- "futures 0.3.31",
- "hex",
- "serde",
- "serde_json",
- "tokio",
- "tower 0.4.13",
- "tower-http",
- "tower-layer 0.1.0",
- "tracing",
- "tracing-subscriber 0.3.22",
- "zkclear-prover",
- "zkclear-sequencer",
- "zkclear-state",
- "zkclear-storage",
- "zkclear-types",
- "zkclear-watcher",
-]
-
-[[package]]
-name = "zkclear-demo"
-version = "0.1.0"
-dependencies = [
- "hex",
- "tokio",
- "zkclear-prover",
- "zkclear-sequencer",
- "zkclear-types",
-]
-
-[[package]]
-name = "zkclear-prover"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "ark-bn254",
- "ark-ec",
- "ark-ff",
- "ark-groth16",
- "ark-r1cs-std",
- "ark-relations",
- "ark-serialize",
- "ark-snark",
- "ark-std",
- "async-trait",
- "bincode",
- "chrono",
- "futures 0.3.31",
- "hex",
- "serde",
- "serde_bytes",
- "sha2",
- "sha3",
- "thiserror",
- "tokio",
- "zkclear-state",
- "zkclear-stf",
- "zkclear-types",
-]
-
-[[package]]
-name = "zkclear-sequencer"
-version = "0.1.0"
-dependencies = [
- "bincode",
- "futures 0.3.31",
- "k256",
- "serde",
- "sha2",
- "sha3",
- "tokio",
- "zkclear-prover",
- "zkclear-state",
- "zkclear-stf",
- "zkclear-storage",
- "zkclear-types",
-]
-
-[[package]]
-name = "zkclear-state"
-version = "0.1.0"
-dependencies = [
- "serde",
- "zkclear-types",
-]
-
-[[package]]
-name = "zkclear-stf"
-version = "0.1.0"
-dependencies = [
- "zkclear-state",
- "zkclear-types",
-]
-
-[[package]]
-name = "zkclear-storage"
-version = "0.1.0"
-dependencies = [
- "bincode",
- "rocksdb",
- "serde",
- "zkclear-state",
- "zkclear-types",
-]
-
-[[package]]
-name = "zkclear-types"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_bytes",
-]
-
-[[package]]
-name = "zkclear-watcher"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "futures 0.3.31",
- "hex",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
- "tokio-test",
- "tracing",
- "tracing-subscriber 0.3.22",
- "zkclear-sequencer",
- "zkclear-storage",
- "zkclear-types",
 ]
 
 [[package]]
