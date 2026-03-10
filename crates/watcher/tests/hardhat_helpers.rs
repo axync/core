@@ -52,7 +52,7 @@ impl HardhatNode {
         let config = ChainConfig {
             chain_id: 31337,
             rpc_url: HARDHAT_RPC.to_string(),
-            deposit_contract_address: "0x0".to_string(),
+            vault_contract_address: "0x0".to_string(),
             required_confirmations: 1,
             poll_interval_seconds: 1,
             rpc_timeout_seconds: 5,

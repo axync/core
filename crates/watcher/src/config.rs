@@ -5,7 +5,7 @@ use axync_types::ChainId;
 pub struct ChainConfig {
     pub chain_id: ChainId,
     pub rpc_url: String,
-    pub deposit_contract_address: String,
+    pub vault_contract_address: String,
     pub required_confirmations: u64,
     pub poll_interval_seconds: u64,
     pub rpc_timeout_seconds: u64,
@@ -25,7 +25,7 @@ impl Default for ChainConfig {
             chain_id: axync_types::chain_ids::ETHEREUM,
             rpc_url: std::env::var("RPC_URL")
                 .unwrap_or_else(|_| "https://eth.llamarpc.com".to_string()),
-            deposit_contract_address: std::env::var("DEPOSIT_CONTRACT_ADDRESS")
+            vault_contract_address: std::env::var("VAULT_CONTRACT_ADDRESS")
                 .unwrap_or_else(|_| "0x0000000000000000000000000000000000000000".to_string()),
             required_confirmations: std::env::var("REQUIRED_CONFIRMATIONS")
                 .ok()
@@ -63,7 +63,7 @@ impl Default for WatcherConfig {
                     chain_id: axync_types::chain_ids::ETHEREUM,
                     rpc_url: std::env::var("ETHEREUM_RPC_URL")
                         .unwrap_or_else(|_| "https://eth.llamarpc.com".to_string()),
-                    deposit_contract_address: std::env::var("ETHEREUM_DEPOSIT_CONTRACT")
+                    vault_contract_address: std::env::var("ETHEREUM_VAULT_CONTRACT")
                         .unwrap_or_else(|_| {
                             "0x0000000000000000000000000000000000000000".to_string()
                         }),
@@ -78,7 +78,7 @@ impl Default for WatcherConfig {
                     chain_id: axync_types::chain_ids::BASE,
                     rpc_url: std::env::var("BASE_RPC_URL")
                         .unwrap_or_else(|_| "https://mainnet.base.org".to_string()),
-                    deposit_contract_address: std::env::var("BASE_DEPOSIT_CONTRACT")
+                    vault_contract_address: std::env::var("BASE_VAULT_CONTRACT")
                         .unwrap_or_else(|_| {
                             "0x0000000000000000000000000000000000000000".to_string()
                         }),
