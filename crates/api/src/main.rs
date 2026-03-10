@@ -189,7 +189,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             chains.push(axync_watcher::ChainConfig {
                 chain_id,
                 rpc_url,
-                deposit_contract_address: std::env::var("ETHEREUM_DEPOSIT_CONTRACT")
+                vault_contract_address: std::env::var("ETHEREUM_VAULT_CONTRACT")
                     .unwrap_or_else(|_| "0x0000000000000000000000000000000000000000".to_string()),
                 required_confirmations: std::env::var("ETHEREUM_REQUIRED_CONFIRMATIONS")
                     .ok()
@@ -228,7 +228,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             chains.push(axync_watcher::ChainConfig {
                 chain_id,
                 rpc_url,
-                deposit_contract_address: std::env::var("BASE_DEPOSIT_CONTRACT")
+                vault_contract_address: std::env::var("BASE_VAULT_CONTRACT")
                     .unwrap_or_else(|_| "0x0000000000000000000000000000000000000000".to_string()),
                 required_confirmations: std::env::var("BASE_REQUIRED_CONFIRMATIONS")
                     .ok()
@@ -270,7 +270,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 chain_id,
                 rpc_url: std::env::var("RPC_URL")
                     .unwrap_or_else(|_| "http://localhost:8545".to_string()),
-                deposit_contract_address: std::env::var("DEPOSIT_CONTRACT_ADDRESS")
+                vault_contract_address: std::env::var("VAULT_CONTRACT_ADDRESS")
                     .unwrap_or_else(|_| "0x0000000000000000000000000000000000000000".to_string()),
                 required_confirmations: std::env::var("REQUIRED_CONFIRMATIONS")
                     .ok()

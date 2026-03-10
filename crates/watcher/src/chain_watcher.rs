@@ -149,7 +149,7 @@ impl ChainWatcher {
             .get_logs(
                 block_number,
                 block_number,
-                &self.config.deposit_contract_address,
+                &self.config.vault_contract_address,
             )
             .await?;
 

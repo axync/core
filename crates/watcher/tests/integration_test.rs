@@ -24,11 +24,11 @@ fn create_test_sequencer() -> Arc<Sequencer> {
 }
 
 // Helper to create a test chain config
-fn create_test_chain_config(deposit_contract_address: String) -> ChainConfig {
+fn create_test_chain_config(vault_contract_address: String) -> ChainConfig {
     ChainConfig {
         chain_id: HARDHAT_CHAIN_ID,
         rpc_url: HARDHAT_RPC.to_string(),
-        deposit_contract_address,
+        vault_contract_address,
         required_confirmations: 0, // Hardhat doesn't need confirmations for local testing
         poll_interval_seconds: 1,
         rpc_timeout_seconds: 10,
