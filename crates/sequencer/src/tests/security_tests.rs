@@ -22,18 +22,6 @@ fn test_validate_address_accepts_valid() {
 }
 
 #[test]
-fn test_validate_amount_rejects_zero() {
-    assert!(!validate_amount(0));
-}
-
-#[test]
-fn test_validate_amount_accepts_valid() {
-    assert!(validate_amount(1));
-    assert!(validate_amount(1000));
-    assert!(validate_amount(u64::MAX / 2));
-}
-
-#[test]
 fn test_validate_nonce_gap_accepts_sequential() {
     assert!(validate_nonce_gap(0, 0).is_ok());
     assert!(validate_nonce_gap(0, 1).is_ok());

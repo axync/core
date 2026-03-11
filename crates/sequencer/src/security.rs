@@ -72,14 +72,6 @@ pub fn validate_address(address: &[u8; 20]) -> bool {
     true
 }
 
-/// Validate amount to prevent overflow/underflow issues
-pub fn validate_amount(amount: u64) -> bool {
-    // Check for reasonable maximum (prevent potential overflow in calculations)
-    const MAX_AMOUNT: u64 = u64::MAX / 2; // Conservative limit
-    
-    amount > 0 && amount <= MAX_AMOUNT
-}
-
 /// Sanitize string input (for API endpoints)
 pub fn sanitize_string(input: &str) -> String {
     // Remove control characters
@@ -125,14 +117,6 @@ mod tests {
         
         let valid_addr = [1u8; 20];
         assert!(validate_address(&valid_addr));
-    }
-
-    #[test]
-    fn test_validate_amount() {
-        assert!(!validate_amount(0));
-        assert!(validate_amount(1));
-        assert!(validate_amount(1000));
-        assert!(validate_amount(u64::MAX / 2));
     }
 
     #[test]

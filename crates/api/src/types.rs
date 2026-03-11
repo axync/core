@@ -194,19 +194,6 @@ pub struct QueueStatusResponse {
     pub current_block_id: BlockId,
 }
 
-#[allow(dead_code)]
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SubmitTxRequest {
-    pub tx: String,
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SubmitTxResponse {
-    pub tx_hash: String,
-    pub status: String,
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct JsonRpcRequest {
     pub jsonrpc: String,
