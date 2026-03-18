@@ -33,6 +33,7 @@ pub fn create_router(state: Arc<ApiState>) -> Router {
         rate_limit_state: Some(rate_limit_state.clone()),
         vesting_reader: state.vesting_reader.clone(),
         escrow_reader: state.escrow_reader.clone(),
+        nft_reader: state.nft_reader.clone(),
         sablier_contracts: state.sablier_contracts.clone(),
         hedgey_contracts: state.hedgey_contracts.clone(),
     });
@@ -58,6 +59,8 @@ pub fn create_router(state: Arc<ApiState>) -> Router {
         .route("/api/v1/vesting/:address", get(get_vesting_positions))
         .route("/api/v1/listings", get(get_listings))
         .route("/api/v1/listing/:listing_id", get(get_listing_detail))
+        // Generic NFT discovery
+        .route("/api/v1/nfts/:address", get(get_nfts))
         .route("/jsonrpc", post(jsonrpc_handler))
         // Add rate limit state to request extensions
         .layer(axum::middleware::from_fn(move |mut request: Request, next: Next| {

@@ -21,7 +21,7 @@ pub struct Listing {
 }
 
 // Function selectors
-const NEXT_LISTING_ID: &str = "60a2da44";      // nextListingId()
+const NEXT_LISTING_ID: &str = "aaccf1ec";      // nextListingId()
 const GET_LISTING: &str = "107a274a";          // getListing(uint256)
 const IS_ACTIVE: &str = "82afd23b";            // isActive(uint256)
 

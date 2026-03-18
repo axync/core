@@ -4,6 +4,7 @@ mod routes;
 mod types;
 pub mod vesting;
 pub mod escrow;
+pub mod nft;
 
 pub use handlers::ApiState;
 pub use routes::create_router;
