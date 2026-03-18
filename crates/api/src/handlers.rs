@@ -19,6 +19,7 @@ pub struct ApiState {
     pub rate_limit_state: Option<Arc<crate::middleware::RateLimitState>>,
     pub vesting_reader: Option<Arc<crate::vesting::VestingReader>>,
     pub escrow_reader: Option<Arc<crate::escrow::EscrowReader>>,
+    pub nft_reader: Option<Arc<crate::nft::NftReader>>,
     pub sablier_contracts: Vec<String>,
     pub hedgey_contracts: Vec<String>,
 }
@@ -1136,8 +1137,42 @@ pub async fn get_listings(
         )
     })?;
 
-    let total = listings.len();
-    Ok(Json(ListingsResponse { listings, total }))
+    // Enrich listings with NFT metadata and platform detection
+    let mut enriched = Vec::with_capacity(listings.len());
+    // Cache collection info per contract to avoid redundant RPC calls
+    let mut collection_cache: std::collections::HashMap<String, (String, String)> = std::collections::HashMap::new();
+
+    for listing in listings {
+        let nft_lower = listing.nft_contract.to_lowercase();
+
+        let platform = if state.sablier_contracts.iter().any(|c| c.to_lowercase() == nft_lower) {
+            Some("sablier".to_string())
+        } else if state.hedgey_contracts.iter().any(|c| c.to_lowercase() == nft_lower) {
+            Some("hedgey".to_string())
+        } else {
+            None
+        };
+
+        let (name, symbol) = if let Some(cached) = collection_cache.get(&nft_lower) {
+            cached.clone()
+        } else if let Some(nft) = state.nft_reader.as_ref() {
+            let info = nft.get_collection_info(&listing.nft_contract).await;
+            collection_cache.insert(nft_lower.clone(), info.clone());
+            info
+        } else {
+            (String::new(), String::new())
+        };
+
+        enriched.push(EnrichedListing {
+            listing,
+            nft_name: name,
+            nft_symbol: symbol,
+            platform,
+        });
+    }
+
+    let total = enriched.len();
+    Ok(Json(ListingsResponse { listings: enriched, total }))
 }
 
 pub async fn get_listing_detail(
@@ -1164,8 +1199,14 @@ pub async fn get_listing_detail(
         )
     })?;
 
-    // Try to fetch vesting info for the listed NFT
-    // The NFT is held by escrow contract, so query by escrow address
+    // Always try to get generic NFT metadata
+    let nft = if let Some(nft_reader) = state.nft_reader.as_ref() {
+        nft_reader.get_metadata(&listing.nft_contract, listing.token_id).await.ok()
+    } else {
+        None
+    };
+
+    // Try to fetch vesting info for known platform NFTs
     let vesting = if let Some(reader) = state.vesting_reader.as_ref() {
         let nft_lower = listing.nft_contract.to_lowercase();
         let is_sablier = state.sablier_contracts.iter().any(|c| c.to_lowercase() == nft_lower);
@@ -1193,5 +1234,59 @@ pub async fn get_listing_detail(
         None
     };
 
-    Ok(Json(ListingDetailResponse { listing, vesting }))
+    Ok(Json(ListingDetailResponse { listing, nft, vesting }))
+}
+
+/// Discover NFTs owned by address from arbitrary contracts
+pub async fn get_nfts(
+    State(state): State<Arc<ApiState>>,
+    Path(address): Path<String>,
+    Query(params): Query<HashMap<String, String>>,
+) -> Result<Json<NftDiscoveryResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let nft_reader = state.nft_reader.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ErrorResponse {
+                error: "NftReaderNotConfigured".to_string(),
+                message: "NFT reader not configured".to_string(),
+            }),
+        )
+    })?;
+
+    let clean_addr = if address.starts_with("0x") {
+        address.clone()
+    } else {
+        format!("0x{}", address)
+    };
+
+    // Get contracts to scan from query param: ?contracts=0x...,0x...
+    let contracts: Vec<String> = params.get("contracts")
+        .map(|c| c.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+        .unwrap_or_default();
+
+    if contracts.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "MissingContracts".to_string(),
+                message: "Provide ?contracts=0x...,0x... to scan for NFTs".to_string(),
+            }),
+        ));
+    }
+
+    // Cap at 10 contracts per request
+    let mut all_nfts = Vec::new();
+    for contract in contracts.iter().take(10) {
+        match nft_reader.get_owned_nfts(contract, &clean_addr).await {
+            Ok(nfts) => all_nfts.extend(nfts),
+            Err(e) => tracing::warn!("Failed to scan NFTs from {}: {}", contract, e),
+        }
+    }
+
+    let total = all_nfts.len();
+    Ok(Json(NftDiscoveryResponse {
+        address: clean_addr,
+        nfts: all_nfts,
+        total,
+    }))
 }

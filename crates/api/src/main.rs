@@ -171,6 +171,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let escrow_contract = std::env::var("ESCROW_CONTRACT").unwrap_or_default();
 
     let vesting_reader = Arc::new(axync_api::vesting::VestingReader::new(marketplace_rpc.clone()));
+    let nft_reader = Arc::new(axync_api::nft::NftReader::new(marketplace_rpc.clone()));
     let escrow_reader = if !escrow_contract.is_empty() {
         Some(Arc::new(axync_api::escrow::EscrowReader::new(marketplace_rpc.clone(), escrow_contract)))
     } else {
@@ -203,6 +204,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         rate_limit_state: Some(rate_limit_state),
         vesting_reader: Some(vesting_reader),
         escrow_reader,
+        nft_reader: Some(nft_reader),
         sablier_contracts,
         hedgey_contracts,
     });
