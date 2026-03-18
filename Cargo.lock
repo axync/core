@@ -374,6 +374,7 @@ dependencies = [
 name = "axync-api"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "axum",
  "axync-prover",
  "axync-sequencer",
@@ -384,6 +385,7 @@ dependencies = [
  "bincode",
  "futures 0.3.31",
  "hex",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
