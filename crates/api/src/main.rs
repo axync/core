@@ -163,10 +163,48 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or(60);
     let rate_limit_state = Arc::new(axync_api::RateLimitState::new(max_requests, window_seconds));
 
+    // Initialize vesting marketplace readers
+    let marketplace_rpc = std::env::var("MARKETPLACE_RPC_URL")
+        .or_else(|_| std::env::var("ETHEREUM_RPC_URL"))
+        .unwrap_or_else(|_| "https://ethereum-sepolia-rpc.publicnode.com".to_string());
+
+    let escrow_contract = std::env::var("ESCROW_CONTRACT").unwrap_or_default();
+
+    let vesting_reader = Arc::new(axync_api::vesting::VestingReader::new(marketplace_rpc.clone()));
+    let escrow_reader = if !escrow_contract.is_empty() {
+        Some(Arc::new(axync_api::escrow::EscrowReader::new(marketplace_rpc.clone(), escrow_contract)))
+    } else {
+        println!("Warning: ESCROW_CONTRACT not set, listings endpoints disabled");
+        None
+    };
+
+    // Known vesting contracts (configurable via env)
+    let sablier_contracts: Vec<String> = std::env::var("SABLIER_CONTRACTS")
+        .unwrap_or_else(|_| "0x6b0307b4338f2963A62106028E3B074C2c0510DA".to_string()) // Sepolia default
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    let hedgey_contracts: Vec<String> = std::env::var("HEDGEY_CONTRACTS")
+        .unwrap_or_else(|_| "0xb49d0CD3D5290adb4aF1eBA7A6B90CdE8B9265ff".to_string()) // Sepolia default
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    println!("Marketplace RPC: {}", marketplace_rpc);
+    println!("Sablier contracts: {:?}", sablier_contracts);
+    println!("Hedgey contracts: {:?}", hedgey_contracts);
+
     let api_state = Arc::new(ApiState {
         sequencer: sequencer.clone(),
         storage: Some(storage_trait),
         rate_limit_state: Some(rate_limit_state),
+        vesting_reader: Some(vesting_reader),
+        escrow_reader,
+        sablier_contracts,
+        hedgey_contracts,
     });
 
     let app = create_router(api_state);

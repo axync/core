@@ -286,3 +286,24 @@ pub struct SubmitTransactionResponse {
     pub tx_hash: String,
     pub status: String,
 }
+
+// ── Vesting marketplace types ──
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct VestingPositionsResponse {
+    pub address: String,
+    pub positions: Vec<crate::vesting::VestingPosition>,
+    pub total: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ListingsResponse {
+    pub listings: Vec<crate::escrow::Listing>,
+    pub total: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ListingDetailResponse {
+    pub listing: crate::escrow::Listing,
+    pub vesting: Option<crate::vesting::VestingPosition>,
+}

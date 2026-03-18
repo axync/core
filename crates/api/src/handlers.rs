@@ -17,6 +17,10 @@ pub struct ApiState {
     pub sequencer: Arc<Sequencer>,
     pub storage: Option<Arc<dyn Storage>>,
     pub rate_limit_state: Option<Arc<crate::middleware::RateLimitState>>,
+    pub vesting_reader: Option<Arc<crate::vesting::VestingReader>>,
+    pub escrow_reader: Option<Arc<crate::escrow::EscrowReader>>,
+    pub sablier_contracts: Vec<String>,
+    pub hedgey_contracts: Vec<String>,
 }
 
 pub async fn get_account_balance(
@@ -1070,4 +1074,124 @@ pub async fn submit_transaction(
             }),
         )),
     }
+}
+
+// ══════════════════════════════════════════════
+// ██  VESTING MARKETPLACE ENDPOINTS
+// ══════════════════════════════════════════════
+
+pub async fn get_vesting_positions(
+    State(state): State<Arc<ApiState>>,
+    Path(address): Path<String>,
+) -> Result<Json<VestingPositionsResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let reader = state.vesting_reader.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ErrorResponse {
+                error: "VestingNotConfigured".to_string(),
+                message: "Vesting reader not configured".to_string(),
+            }),
+        )
+    })?;
+
+    let clean_addr = if address.starts_with("0x") {
+        address.clone()
+    } else {
+        format!("0x{}", address)
+    };
+
+    let sablier_refs: Vec<&str> = state.sablier_contracts.iter().map(|s| s.as_str()).collect();
+    let hedgey_refs: Vec<&str> = state.hedgey_contracts.iter().map(|s| s.as_str()).collect();
+
+    let positions = reader.get_all_positions(&clean_addr, &sablier_refs, &hedgey_refs).await;
+    let total = positions.len();
+
+    Ok(Json(VestingPositionsResponse {
+        address: clean_addr,
+        positions,
+        total,
+    }))
+}
+
+pub async fn get_listings(
+    State(state): State<Arc<ApiState>>,
+) -> Result<Json<ListingsResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let reader = state.escrow_reader.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ErrorResponse {
+                error: "EscrowNotConfigured".to_string(),
+                message: "Escrow reader not configured".to_string(),
+            }),
+        )
+    })?;
+
+    let listings = reader.get_active_listings().await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "ReadError".to_string(),
+                message: format!("Failed to read listings: {}", e),
+            }),
+        )
+    })?;
+
+    let total = listings.len();
+    Ok(Json(ListingsResponse { listings, total }))
+}
+
+pub async fn get_listing_detail(
+    State(state): State<Arc<ApiState>>,
+    Path(listing_id): Path<u64>,
+) -> Result<Json<ListingDetailResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let escrow = state.escrow_reader.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ErrorResponse {
+                error: "EscrowNotConfigured".to_string(),
+                message: "Escrow reader not configured".to_string(),
+            }),
+        )
+    })?;
+
+    let listing = escrow.get_listing(listing_id).await.map_err(|e| {
+        (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "ListingNotFound".to_string(),
+                message: format!("Listing {} not found: {}", listing_id, e),
+            }),
+        )
+    })?;
+
+    // Try to fetch vesting info for the listed NFT
+    // The NFT is held by escrow contract, so query by escrow address
+    let vesting = if let Some(reader) = state.vesting_reader.as_ref() {
+        let nft_lower = listing.nft_contract.to_lowercase();
+        let is_sablier = state.sablier_contracts.iter().any(|c| c.to_lowercase() == nft_lower);
+        let is_hedgey = state.hedgey_contracts.iter().any(|c| c.to_lowercase() == nft_lower);
+        let escrow_addr = escrow.contract_address();
+
+        if is_sablier {
+            reader.get_sablier_positions(&listing.nft_contract, escrow_addr)
+                .await
+                .ok()
+                .and_then(|positions| {
+                    positions.into_iter().find(|p| p.token_id == listing.token_id)
+                })
+        } else if is_hedgey {
+            reader.get_hedgey_positions(&listing.nft_contract, escrow_addr)
+                .await
+                .ok()
+                .and_then(|positions| {
+                    positions.into_iter().find(|p| p.token_id == listing.token_id)
+                })
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    Ok(Json(ListingDetailResponse { listing, vesting }))
 }
