@@ -1,7 +1,8 @@
 use axync_state::State;
 use axync_types::{
-    AcceptDeal, Address, AssetId, Balance, CancelDeal, ChainId, CreateDeal, Deal, DealStatus,
-    DealVisibility, Deposit, Tx, TxPayload, Withdraw,
+    AcceptDeal, Address, AssetId, Balance, BuyNft, CancelDeal, CancelNftListing, ChainId,
+    CreateDeal, Deal, DealStatus, DealVisibility, Deposit, ListNft, NftListing, NftListingStatus,
+    Tx, TxPayload, Withdraw, ZERO_ADDRESS,
 };
 
 #[derive(Debug)]
@@ -16,6 +17,8 @@ pub enum StfError {
     Overflow,
     InvalidNonce,
     DealExpired,
+    NftListingNotFound,
+    NftListingNotActive,
 }
 
 pub fn apply_tx(state: &mut State, tx: &Tx, block_timestamp: u64) -> Result<(), StfError> {
@@ -27,6 +30,9 @@ pub fn apply_tx(state: &mut State, tx: &Tx, block_timestamp: u64) -> Result<(), 
         TxPayload::CreateDeal(p) => apply_create_deal(state, tx.from, p, block_timestamp),
         TxPayload::AcceptDeal(p) => apply_accept_deal(state, tx.from, p, block_timestamp),
         TxPayload::CancelDeal(p) => apply_cancel_deal(state, tx.from, p),
+        TxPayload::ListNft(p) => apply_list_nft(state, p, block_timestamp),
+        TxPayload::BuyNft(p) => apply_buy_nft(state, tx.from, p),
+        TxPayload::CancelNftListing(p) => apply_cancel_nft_listing(state, p),
     };
 
     if result.is_ok() {
@@ -220,6 +226,95 @@ fn apply_cancel_deal(
     Ok(())
 }
 
+// ── NFT Marketplace STF ──
+
+/// Created by watcher from NftListed on-chain event
+fn apply_list_nft(
+    state: &mut State,
+    payload: &ListNft,
+    block_timestamp: u64,
+) -> Result<(), StfError> {
+    let id = state.next_nft_listing_id;
+    state.next_nft_listing_id += 1;
+
+    let listing = NftListing {
+        id,
+        seller: payload.seller,
+        nft_contract: payload.nft_contract,
+        token_id: payload.token_id,
+        nft_chain_id: payload.nft_chain_id,
+        price: payload.price,
+        payment_chain_id: payload.payment_chain_id,
+        status: NftListingStatus::Active,
+        buyer: ZERO_ADDRESS,
+        created_at: block_timestamp,
+        on_chain_listing_id: payload.on_chain_listing_id,
+    };
+
+    state.upsert_nft_listing(listing);
+    Ok(())
+}
+
+/// Submitted by buyer (user-signed). Deducts buyer balance, credits seller.
+fn apply_buy_nft(
+    state: &mut State,
+    buyer: Address,
+    payload: &BuyNft,
+) -> Result<(), StfError> {
+    // Read listing data first
+    let (seller, price, payment_chain_id) = {
+        let listing = state
+            .get_nft_listing(payload.listing_id)
+            .ok_or(StfError::NftListingNotFound)?;
+
+        if listing.status != NftListingStatus::Active {
+            return Err(StfError::NftListingNotActive);
+        }
+
+        if listing.seller == buyer {
+            return Err(StfError::Unauthorized);
+        }
+
+        (listing.seller, listing.price, listing.payment_chain_id)
+    };
+
+    // ETH = asset_id 0
+    let asset_id: u16 = 0;
+
+    // Check and deduct buyer balance
+    ensure_balance(state, buyer, asset_id, price, payment_chain_id)?;
+    sub_balance(state, buyer, asset_id, price, payment_chain_id)?;
+
+    // Credit seller (fee is taken on-chain when seller withdraws, not here)
+    add_balance(state, seller, asset_id, price, payment_chain_id);
+
+    // Mark listing as sold
+    let listing = state
+        .get_nft_listing_mut(payload.listing_id)
+        .ok_or(StfError::NftListingNotFound)?;
+    listing.status = NftListingStatus::Sold;
+    listing.buyer = buyer;
+
+    Ok(())
+}
+
+/// Created by watcher from NftCancelled on-chain event
+fn apply_cancel_nft_listing(
+    state: &mut State,
+    payload: &CancelNftListing,
+) -> Result<(), StfError> {
+    let listing = state
+        .get_nft_listing_mut(payload.listing_id)
+        .ok_or(StfError::NftListingNotFound)?;
+
+    if listing.status != NftListingStatus::Active {
+        return Err(StfError::NftListingNotActive);
+    }
+
+    listing.status = NftListingStatus::Cancelled;
+    Ok(())
+}
+
 fn add_balance(
     state: &mut State,
     owner: Address,
@@ -326,6 +421,9 @@ mod tests {
                 TxPayload::CreateDeal(_) => TxKind::CreateDeal,
                 TxPayload::AcceptDeal(_) => TxKind::AcceptDeal,
                 TxPayload::CancelDeal(_) => TxKind::CancelDeal,
+                TxPayload::ListNft(_) => TxKind::ListNft,
+                TxPayload::BuyNft(_) => TxKind::BuyNft,
+                TxPayload::CancelNftListing(_) => TxKind::CancelNftListing,
             },
             payload,
             signature: [0u8; 65],

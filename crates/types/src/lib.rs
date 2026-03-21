@@ -4,6 +4,7 @@ pub use constants::*;
 
 pub type AccountId = u64;
 pub type DealId = u64;
+pub type NftListingId = u64;
 pub type AssetId = u16;
 pub type BlockId = u64;
 pub type ChainId = u64;
@@ -73,6 +74,36 @@ pub enum DealStatus {
     Expired,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum NftListingStatus {
+    Active,
+    Sold,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct NftListing {
+    pub id: NftListingId,
+    #[serde(with = "serde_bytes")]
+    pub seller: Address,
+    /// ERC-721 contract address
+    #[serde(with = "serde_bytes")]
+    pub nft_contract: Address,
+    pub token_id: u64,
+    /// Chain where the NFT lives (and is escrowed)
+    pub nft_chain_id: ChainId,
+    /// Price in wei (ETH)
+    pub price: u128,
+    /// Chain where buyer pays (via AxyncVault deposit)
+    pub payment_chain_id: ChainId,
+    pub status: NftListingStatus,
+    #[serde(with = "serde_bytes")]
+    pub buyer: Address,
+    pub created_at: u64,
+    /// Listing ID in the on-chain NftMarketplace contract
+    pub on_chain_listing_id: u64,
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Account {
     pub id: AccountId,
@@ -132,6 +163,9 @@ pub enum TxKind {
     AcceptDeal,
     CancelDeal,
     Withdraw,
+    ListNft,
+    BuyNft,
+    CancelNftListing,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -153,6 +187,9 @@ pub enum TxPayload {
     AcceptDeal(AcceptDeal),
     CancelDeal(CancelDeal),
     Withdraw(Withdraw),
+    ListNft(ListNft),
+    BuyNft(BuyNft),
+    CancelNftListing(CancelNftListing),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -198,6 +235,33 @@ pub struct Withdraw {
     pub amount: u128,
     pub to: Address,
     pub chain_id: ChainId,
+}
+
+/// Created by watcher when NftListed event is detected on-chain
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ListNft {
+    #[serde(with = "serde_bytes")]
+    pub seller: Address,
+    #[serde(with = "serde_bytes")]
+    pub nft_contract: Address,
+    pub token_id: u64,
+    pub nft_chain_id: ChainId,
+    pub price: u128,
+    pub payment_chain_id: ChainId,
+    pub on_chain_listing_id: u64,
+}
+
+/// Submitted by buyer (user-signed)
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct BuyNft {
+    pub listing_id: NftListingId,
+}
+
+/// Created by watcher when NftCancelled event is detected on-chain
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct CancelNftListing {
+    pub listing_id: NftListingId,
+    pub on_chain_listing_id: u64,
 }
 
 /// ZK proof for withdrawal (merkle inclusion proof + nullifier)

@@ -1,12 +1,14 @@
 use std::collections::HashMap;
-use axync_types::{Account, AccountId, Address, Deal, DealId};
+use axync_types::{Account, AccountId, Address, Deal, DealId, NftListing, NftListingId};
 
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct State {
     pub accounts: HashMap<AccountId, Account>,
     pub deals: HashMap<DealId, Deal>,
+    pub nft_listings: HashMap<NftListingId, NftListing>,
     pub account_index: HashMap<Address, AccountId>,
     pub next_account_id: AccountId,
+    pub next_nft_listing_id: NftListingId,
 }
 
 impl State {
@@ -14,8 +16,10 @@ impl State {
         Self {
             accounts: HashMap::new(),
             deals: HashMap::new(),
+            nft_listings: HashMap::new(),
             account_index: HashMap::new(),
             next_account_id: 0,
+            next_nft_listing_id: 0,
         }
     }
 
@@ -42,6 +46,18 @@ impl State {
 
     pub fn upsert_deal(&mut self, deal: Deal) {
         self.deals.insert(deal.id, deal);
+    }
+
+    pub fn get_nft_listing(&self, id: NftListingId) -> Option<&NftListing> {
+        self.nft_listings.get(&id)
+    }
+
+    pub fn get_nft_listing_mut(&mut self, id: NftListingId) -> Option<&mut NftListing> {
+        self.nft_listings.get_mut(&id)
+    }
+
+    pub fn upsert_nft_listing(&mut self, listing: NftListing) {
+        self.nft_listings.insert(listing.id, listing);
     }
 
     pub fn get_or_create_account_by_owner(&mut self, owner: Address) -> &mut Account {

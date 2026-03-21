@@ -1290,3 +1290,152 @@ pub async fn get_nfts(
         total,
     }))
 }
+
+// ══════════════════════════════════════════════
+// ██  CROSS-CHAIN NFT MARKETPLACE
+// ══════════════════════════════════════════════
+
+/// GET /api/v1/nft-listings — list all NFT listings from sequencer state
+pub async fn get_nft_listings(
+    State(state): State<Arc<ApiState>>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let sequencer_state = state.sequencer.get_state();
+    let state_guard = sequencer_state.lock().unwrap();
+
+    let status_filter = params.get("status").map(|s| s.as_str());
+
+    let listings: Vec<serde_json::Value> = state_guard
+        .nft_listings
+        .values()
+        .filter(|l| match status_filter {
+            Some("active") => l.status == axync_types::NftListingStatus::Active,
+            Some("sold") => l.status == axync_types::NftListingStatus::Sold,
+            Some("cancelled") => l.status == axync_types::NftListingStatus::Cancelled,
+            _ => true,
+        })
+        .map(|l| {
+            serde_json::json!({
+                "id": l.id,
+                "seller": format!("0x{}", hex::encode(l.seller)),
+                "nft_contract": format!("0x{}", hex::encode(l.nft_contract)),
+                "token_id": l.token_id,
+                "nft_chain_id": l.nft_chain_id,
+                "price": l.price.to_string(),
+                "payment_chain_id": l.payment_chain_id,
+                "status": format!("{:?}", l.status),
+                "buyer": if l.buyer == axync_types::ZERO_ADDRESS {
+                    None
+                } else {
+                    Some(format!("0x{}", hex::encode(l.buyer)))
+                },
+                "on_chain_listing_id": l.on_chain_listing_id,
+                "created_at": l.created_at,
+            })
+        })
+        .collect();
+
+    Ok(Json(serde_json::json!({
+        "listings": listings,
+        "total": listings.len(),
+    })))
+}
+
+/// GET /api/v1/nft-listing/:listing_id — get single listing details
+pub async fn get_nft_listing(
+    State(state): State<Arc<ApiState>>,
+    Path(listing_id): Path<u64>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let sequencer_state = state.sequencer.get_state();
+    let state_guard = sequencer_state.lock().unwrap();
+
+    let listing = state_guard.get_nft_listing(listing_id).ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "NotFound".to_string(),
+                message: format!("Listing {} not found", listing_id),
+            }),
+        )
+    })?;
+
+    Ok(Json(serde_json::json!({
+        "id": listing.id,
+        "seller": format!("0x{}", hex::encode(listing.seller)),
+        "nft_contract": format!("0x{}", hex::encode(listing.nft_contract)),
+        "token_id": listing.token_id,
+        "nft_chain_id": listing.nft_chain_id,
+        "price": listing.price.to_string(),
+        "payment_chain_id": listing.payment_chain_id,
+        "status": format!("{:?}", listing.status),
+        "buyer": if listing.buyer == axync_types::ZERO_ADDRESS {
+            None
+        } else {
+            Some(format!("0x{}", hex::encode(listing.buyer)))
+        },
+        "on_chain_listing_id": listing.on_chain_listing_id,
+        "created_at": listing.created_at,
+    })))
+}
+
+/// GET /api/v1/nft-release-proof/:listing_id — merkle proof for claimNft on-chain
+pub async fn get_nft_release_proof(
+    State(state): State<Arc<ApiState>>,
+    Path(listing_id): Path<u64>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let sequencer_state = state.sequencer.get_state();
+    let state_guard = sequencer_state.lock().unwrap();
+
+    let listing = state_guard.get_nft_listing(listing_id).ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "NotFound".to_string(),
+                message: format!("Listing {} not found", listing_id),
+            }),
+        )
+    })?;
+
+    if listing.status != axync_types::NftListingStatus::Sold {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "NotSold".to_string(),
+                message: "Listing has not been sold yet".to_string(),
+            }),
+        ));
+    }
+
+    // Compute the NFT release leaf
+    let leaf = axync_prover::merkle::hash_nft_release(
+        listing.nft_contract,
+        listing.token_id,
+        listing.buyer,
+        listing.nft_chain_id,
+        listing.on_chain_listing_id,
+    );
+
+    // For now, return the leaf hash. Full merkle proof requires
+    // finding the block where this BuyNft tx was included and
+    // regenerating the tree. Placeholder for v1.
+    let nullifier = {
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(&leaf);
+        hasher.update(&listing.on_chain_listing_id.to_le_bytes());
+        let result: [u8; 32] = hasher.finalize().into();
+        result
+    };
+
+    Ok(Json(serde_json::json!({
+        "listing_id": listing.id,
+        "on_chain_listing_id": listing.on_chain_listing_id,
+        "buyer": format!("0x{}", hex::encode(listing.buyer)),
+        "nft_contract": format!("0x{}", hex::encode(listing.nft_contract)),
+        "token_id": listing.token_id,
+        "nft_chain_id": listing.nft_chain_id,
+        "leaf": format!("0x{}", hex::encode(leaf)),
+        "nullifier": format!("0x{}", hex::encode(nullifier)),
+        "merkle_proof": "0x01", // placeholder proof (accepted by placeholder verifier)
+    })))
+}

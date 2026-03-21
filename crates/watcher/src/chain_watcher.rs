@@ -144,6 +144,7 @@ impl ChainWatcher {
     }
 
     async fn process_block(&self, block_number: u64) -> anyhow::Result<()> {
+        // Process vault deposit events
         let logs = self
             .rpc_client
             .get_logs(
@@ -157,11 +158,11 @@ impl ChainWatcher {
             chain_id = self.config.chain_id,
             block = block_number,
             log_count = logs.len(),
-            "Processing block"
+            "Processing block (vault)"
         );
 
-        for log in logs {
-            let tx_hash = self.parse_tx_hash(&log)?;
+        for log in &logs {
+            let tx_hash = self.parse_tx_hash(log)?;
 
             let processed = self.processed_txs.lock().await;
             if processed.contains(&tx_hash) {
@@ -174,7 +175,7 @@ impl ChainWatcher {
             }
             drop(processed);
 
-            let (account, asset_id, amount) = self.parse_deposit_log(&log)?;
+            let (account, asset_id, amount) = self.parse_deposit_log(log)?;
 
             match self.processor.process_deposit_event(
                 self.config.chain_id,
@@ -206,6 +207,100 @@ impl ChainWatcher {
             }
         }
 
+        // Process NftMarketplace events
+        if let Some(ref marketplace_addr) = self.config.marketplace_contract_address {
+            let marketplace_logs = self
+                .rpc_client
+                .get_logs(block_number, block_number, marketplace_addr)
+                .await?;
+
+            if !marketplace_logs.is_empty() {
+                debug!(
+                    chain_id = self.config.chain_id,
+                    block = block_number,
+                    log_count = marketplace_logs.len(),
+                    "Processing block (marketplace)"
+                );
+            }
+
+            let nft_listed_sig = "0xfebb39f58e20b82053b272222107ed5076573054a0becf582b5800513501d34b";
+            let nft_cancelled_sig = "0xe8580d4b2abe8e4b73ec7f0ee6709642b78d94be0a89c3609cdddf6f119155e3";
+
+            for log in &marketplace_logs {
+                let tx_hash = self.parse_tx_hash(log)?;
+
+                let processed = self.processed_txs.lock().await;
+                if processed.contains(&tx_hash) {
+                    continue;
+                }
+                drop(processed);
+
+                let topics = log["topics"]
+                    .as_array()
+                    .ok_or_else(|| anyhow::anyhow!("Missing topics"))?;
+
+                if topics.is_empty() {
+                    continue;
+                }
+
+                let event_sig = topics[0].as_str().unwrap_or("");
+
+                if event_sig == nft_listed_sig {
+                    match self.parse_nft_listed_log(log) {
+                        Ok((seller, nft_contract, token_id, price, payment_chain_id, listing_id)) => {
+                            match self.processor.process_nft_listed_event(
+                                self.config.chain_id,
+                                seller,
+                                nft_contract,
+                                token_id,
+                                price,
+                                payment_chain_id,
+                                listing_id,
+                            ) {
+                                Ok(_) => {
+                                    let mut processed = self.processed_txs.lock().await;
+                                    processed.insert(tx_hash);
+                                    info!(
+                                        chain_id = self.config.chain_id,
+                                        listing_id = listing_id,
+                                        "Processed NftListed"
+                                    );
+                                }
+                                Err(e) => {
+                                    error!(error = %e, "Failed to process NftListed");
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            error!(error = %e, "Failed to parse NftListed log");
+                        }
+                    }
+                } else if event_sig == nft_cancelled_sig {
+                    match self.parse_nft_cancelled_log(log) {
+                        Ok(listing_id) => {
+                            match self.processor.process_nft_cancelled_event(listing_id) {
+                                Ok(_) => {
+                                    let mut processed = self.processed_txs.lock().await;
+                                    processed.insert(tx_hash);
+                                    info!(
+                                        chain_id = self.config.chain_id,
+                                        listing_id = listing_id,
+                                        "Processed NftCancelled"
+                                    );
+                                }
+                                Err(e) => {
+                                    error!(error = %e, "Failed to process NftCancelled");
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            error!(error = %e, "Failed to parse NftCancelled log");
+                        }
+                    }
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -224,6 +319,78 @@ impl ChainWatcher {
         let mut hash = [0u8; 32];
         hash.copy_from_slice(&tx_hash_bytes);
         Ok(hash)
+    }
+
+    /// Parse NftListed event: topics=[sig, listingId, seller], data=[nftContract, tokenId, price, paymentChainId]
+    fn parse_nft_listed_log(
+        &self,
+        log: &serde_json::Value,
+    ) -> anyhow::Result<(axync_types::Address, axync_types::Address, u64, u128, u64, u64)> {
+        let topics = log["topics"]
+            .as_array()
+            .ok_or_else(|| anyhow::anyhow!("Missing topics"))?;
+
+        if topics.len() < 3 {
+            return Err(anyhow::anyhow!("NftListed: expected 3 topics"));
+        }
+
+        // topics[1] = listingId (indexed uint256)
+        let listing_id_hex = topics[1].as_str().unwrap_or("0x0");
+        let listing_id = u64::from_str_radix(listing_id_hex.trim_start_matches("0x"), 16)?;
+
+        // topics[2] = seller (indexed address)
+        let seller_hex = topics[2].as_str().unwrap_or("0x0");
+        let seller_bytes = hex::decode(seller_hex.trim_start_matches("0x"))?;
+        let mut seller = [0u8; 20];
+        seller.copy_from_slice(&seller_bytes[12..32]);
+
+        // data = abi.encode(nftContract, tokenId, price, paymentChainId)
+        let data = log["data"].as_str().unwrap_or("0x");
+        let data_bytes = hex::decode(data.trim_start_matches("0x"))?;
+
+        if data_bytes.len() < 128 {
+            return Err(anyhow::anyhow!("NftListed: data too short"));
+        }
+
+        // nftContract (address, padded to 32 bytes)
+        let mut nft_contract = [0u8; 20];
+        nft_contract.copy_from_slice(&data_bytes[12..32]);
+
+        // tokenId (uint256)
+        let mut token_id_bytes = [0u8; 8];
+        token_id_bytes.copy_from_slice(&data_bytes[56..64]);
+        let token_id = u64::from_be_bytes(token_id_bytes);
+
+        // price (uint256 → u128)
+        let mut price_bytes = [0u8; 16];
+        price_bytes.copy_from_slice(&data_bytes[80..96]);
+        let price = u128::from_be_bytes(price_bytes);
+
+        // paymentChainId (uint256 → u64)
+        let mut chain_id_bytes = [0u8; 8];
+        chain_id_bytes.copy_from_slice(&data_bytes[120..128]);
+        let payment_chain_id = u64::from_be_bytes(chain_id_bytes);
+
+        Ok((seller, nft_contract, token_id, price, payment_chain_id, listing_id))
+    }
+
+    /// Parse NftCancelled event: topics=[sig, listingId]
+    fn parse_nft_cancelled_log(
+        &self,
+        log: &serde_json::Value,
+    ) -> anyhow::Result<u64> {
+        let topics = log["topics"]
+            .as_array()
+            .ok_or_else(|| anyhow::anyhow!("Missing topics"))?;
+
+        if topics.len() < 2 {
+            return Err(anyhow::anyhow!("NftCancelled: expected 2 topics"));
+        }
+
+        let listing_id_hex = topics[1].as_str().unwrap_or("0x0");
+        let listing_id = u64::from_str_radix(listing_id_hex.trim_start_matches("0x"), 16)?;
+
+        Ok(listing_id)
     }
 
     fn parse_deposit_log(

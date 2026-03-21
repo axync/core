@@ -29,6 +29,9 @@ pub fn validate_tx_size(tx: &Tx) -> Result<(), ValidationError> {
         axync_types::TxPayload::CreateDeal(_) => 500,
         axync_types::TxPayload::AcceptDeal(_) => 50,
         axync_types::TxPayload::CancelDeal(_) => 50,
+        axync_types::TxPayload::ListNft(_) => 200,
+        axync_types::TxPayload::BuyNft(_) => 50,
+        axync_types::TxPayload::CancelNftListing(_) => 50,
     };
     
     let total_size = size + payload_size;

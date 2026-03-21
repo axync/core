@@ -445,18 +445,38 @@ impl Sequencer {
         Ok(hasher.finalize().into())
     }
 
-    /// Compute withdrawals root from transactions
+    /// Compute withdrawals root from transactions (includes NFT release leaves)
     fn compute_withdrawals_root(&self, transactions: &[Tx]) -> Result<[u8; 32], SequencerError> {
-        use axync_prover::merkle::{hash_withdrawal, MerkleTree};
+        use axync_prover::merkle::{hash_nft_release, hash_withdrawal, MerkleTree};
 
         let mut tree = MerkleTree::new();
 
+        let state = self.state.lock().unwrap();
+
         for tx in transactions {
-            if let axync_types::TxPayload::Withdraw(w) = &tx.payload {
-                let leaf = hash_withdrawal(tx.from, w.asset_id, w.amount, w.chain_id);
-                tree.add_leaf(leaf);
+            match &tx.payload {
+                axync_types::TxPayload::Withdraw(w) => {
+                    let leaf = hash_withdrawal(tx.from, w.asset_id, w.amount, w.chain_id);
+                    tree.add_leaf(leaf);
+                }
+                axync_types::TxPayload::BuyNft(buy) => {
+                    // Add NFT release leaf so buyer can claim on-chain
+                    if let Some(listing) = state.get_nft_listing(buy.listing_id) {
+                        let leaf = hash_nft_release(
+                            listing.nft_contract,
+                            listing.token_id,
+                            listing.buyer,
+                            listing.nft_chain_id,
+                            listing.on_chain_listing_id,
+                        );
+                        tree.add_leaf(leaf);
+                    }
+                }
+                _ => {}
             }
         }
+
+        drop(state);
 
         tree.root().map_err(|e| {
             SequencerError::ProverError(format!("Failed to compute withdrawals root: {:?}", e))

@@ -128,6 +128,23 @@ pub fn hash_withdrawal(
     hasher.finalize().into()
 }
 
+/// Hash an NFT release to create a leaf (for claimNft on-chain verification)
+pub fn hash_nft_release(
+    nft_contract: Address,
+    token_id: u64,
+    buyer: Address,
+    nft_chain_id: ChainId,
+    listing_id: u64,
+) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    hasher.update(&nft_contract);
+    hasher.update(&token_id.to_le_bytes());
+    hasher.update(&buyer);
+    hasher.update(&nft_chain_id.to_le_bytes());
+    hasher.update(&listing_id.to_le_bytes());
+    hasher.finalize().into()
+}
+
 /// Hash state data to create a leaf for state root
 pub fn hash_state_leaf(data: &[u8]) -> [u8; 32] {
     let mut hasher = Sha256::new();

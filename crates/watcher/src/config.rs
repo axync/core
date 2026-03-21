@@ -6,6 +6,7 @@ pub struct ChainConfig {
     pub chain_id: ChainId,
     pub rpc_url: String,
     pub vault_contract_address: String,
+    pub marketplace_contract_address: Option<String>,
     pub required_confirmations: u64,
     pub poll_interval_seconds: u64,
     pub rpc_timeout_seconds: u64,
@@ -27,6 +28,7 @@ impl Default for ChainConfig {
                 .unwrap_or_else(|_| "https://eth.llamarpc.com".to_string()),
             vault_contract_address: std::env::var("VAULT_CONTRACT_ADDRESS")
                 .unwrap_or_else(|_| "0x0000000000000000000000000000000000000000".to_string()),
+            marketplace_contract_address: std::env::var("MARKETPLACE_CONTRACT_ADDRESS").ok(),
             required_confirmations: std::env::var("REQUIRED_CONFIRMATIONS")
                 .ok()
                 .and_then(|v| v.parse().ok())
@@ -67,6 +69,7 @@ impl Default for WatcherConfig {
                         .unwrap_or_else(|_| {
                             "0x0000000000000000000000000000000000000000".to_string()
                         }),
+                    marketplace_contract_address: std::env::var("ETHEREUM_MARKETPLACE_CONTRACT").ok(),
                     required_confirmations: 12,
                     poll_interval_seconds: 3,
                     rpc_timeout_seconds: 30,
@@ -82,6 +85,7 @@ impl Default for WatcherConfig {
                         .unwrap_or_else(|_| {
                             "0x0000000000000000000000000000000000000000".to_string()
                         }),
+                    marketplace_contract_address: std::env::var("BASE_MARKETPLACE_CONTRACT").ok(),
                     required_confirmations: 12,
                     poll_interval_seconds: 3,
                     rpc_timeout_seconds: 30,
