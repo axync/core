@@ -65,6 +65,7 @@ pub fn create_router(state: Arc<ApiState>) -> Router {
         .route("/api/v1/nft-listings", get(get_nft_listings))
         .route("/api/v1/nft-listing/:listing_id", get(get_nft_listing))
         .route("/api/v1/nft-release-proof/:listing_id", get(get_nft_release_proof))
+        .route("/api/v1/withdrawal-proof/:address/:asset_id/:amount/:chain_id", get(get_withdrawal_proof))
         .route("/jsonrpc", post(jsonrpc_handler))
         // Add rate limit state to request extensions
         .layer(axum::middleware::from_fn(move |mut request: Request, next: Next| {

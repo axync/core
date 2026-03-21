@@ -1,8 +1,12 @@
 use crate::error::ProverError;
-use sha2::{Digest, Sha256};
+use sha3::{Digest, Keccak256};
 use axync_types::{Address, AssetId, ChainId};
 
-/// Merkle tree for state roots and withdrawals roots
+/// Merkle tree compatible with Solidity's sorted-pair keccak256 verification.
+///
+/// On-chain verification uses:
+///   if (a <= b) { hash(a, b) } else { hash(b, a) }
+/// so pair ordering is deterministic by value, not position.
 pub struct MerkleTree {
     pub(crate) leaves: Vec<[u8; 32]>,
 }
@@ -12,13 +16,16 @@ impl MerkleTree {
         Self { leaves: Vec::new() }
     }
 
-    /// Add a leaf to the tree
     pub fn add_leaf(&mut self, leaf: [u8; 32]) {
         self.leaves.push(leaf);
     }
 
-    /// Compute the Merkle root
-    /// Optimized to avoid unnecessary allocations
+    /// Number of leaves in the tree
+    pub fn len(&self) -> usize {
+        self.leaves.len()
+    }
+
+    /// Compute the Merkle root using sorted-pair keccak256 (Solidity-compatible)
     pub fn root(&self) -> Result<[u8; 32], ProverError> {
         if self.leaves.is_empty() {
             return Ok([0u8; 32]);
@@ -28,22 +35,22 @@ impl MerkleTree {
             return Ok(self.leaves[0]);
         }
 
-        // Pre-allocate with capacity estimate to reduce reallocations
-        let mut current_level = Vec::with_capacity(self.leaves.len());
-        current_level.extend_from_slice(&self.leaves);
+        let mut current_level = self.leaves.clone();
+
+        // Pad to even number if needed
+        if current_level.len() % 2 != 0 {
+            let last = *current_level.last().unwrap();
+            current_level.push(last);
+        }
 
         while current_level.len() > 1 {
-            let next_level_len = (current_level.len() + 1) / 2;
-            let mut next_level = Vec::with_capacity(next_level_len);
+            let mut next_level = Vec::with_capacity((current_level.len() + 1) / 2);
 
             for i in (0..current_level.len()).step_by(2) {
                 if i + 1 < current_level.len() {
-                    let hash = hash_pair(&current_level[i], &current_level[i + 1]);
-                    next_level.push(hash);
+                    next_level.push(hash_pair_sorted(&current_level[i], &current_level[i + 1]));
                 } else {
-                    // Odd number of nodes, duplicate the last one
-                    let hash = hash_pair(&current_level[i], &current_level[i]);
-                    next_level.push(hash);
+                    next_level.push(hash_pair_sorted(&current_level[i], &current_level[i]));
                 }
             }
 
@@ -53,12 +60,13 @@ impl MerkleTree {
         Ok(current_level[0])
     }
 
-    /// Generate a Merkle proof for a leaf at the given index
+    /// Generate a Merkle proof for a leaf at the given index.
+    /// Returns sibling hashes from bottom to top (matches Solidity verification order).
     pub fn proof(&self, leaf_index: usize) -> Result<Vec<[u8; 32]>, ProverError> {
         if leaf_index >= self.leaves.len() {
             return Err(ProverError::MerkleTree(format!(
-                "Leaf index {} out of bounds",
-                leaf_index
+                "Leaf index {} out of bounds (tree has {} leaves)",
+                leaf_index, self.leaves.len()
             )));
         }
 
@@ -68,6 +76,13 @@ impl MerkleTree {
 
         let mut proof = Vec::new();
         let mut current_level = self.leaves.clone();
+
+        // Pad to even
+        if current_level.len() % 2 != 0 {
+            let last = *current_level.last().unwrap();
+            current_level.push(last);
+        }
+
         let mut current_index = leaf_index;
 
         while current_level.len() > 1 {
@@ -80,25 +95,20 @@ impl MerkleTree {
             if sibling_index < current_level.len() {
                 proof.push(current_level[sibling_index]);
             } else {
-                // Sibling doesn't exist (odd number of nodes), duplicate the current node
                 proof.push(current_level[current_index]);
             }
 
-            // Build next level
+            // Build next level with sorted pairs
             let mut next_level = Vec::new();
             for i in (0..current_level.len()).step_by(2) {
                 if i + 1 < current_level.len() {
-                    let hash = hash_pair(&current_level[i], &current_level[i + 1]);
-                    next_level.push(hash);
+                    next_level.push(hash_pair_sorted(&current_level[i], &current_level[i + 1]));
                 } else {
-                    // Odd number, duplicate the last node
-                    let hash = hash_pair(&current_level[i], &current_level[i]);
-                    next_level.push(hash);
+                    next_level.push(hash_pair_sorted(&current_level[i], &current_level[i]));
                 }
             }
 
-            // Update current_index for next level
-            current_index = current_index / 2;
+            current_index /= 2;
             current_level = next_level;
         }
 
@@ -106,29 +116,41 @@ impl MerkleTree {
     }
 }
 
-fn hash_pair(left: &[u8; 32], right: &[u8; 32]) -> [u8; 32] {
-    let mut hasher = Sha256::new();
-    hasher.update(left);
-    hasher.update(right);
+/// Hash two nodes with sorted order (smaller first), using keccak256.
+/// Matches Solidity: `keccak256(abi.encodePacked(a <= b ? a : b, a <= b ? b : a))`
+fn hash_pair_sorted(a: &[u8; 32], b: &[u8; 32]) -> [u8; 32] {
+    let mut hasher = Keccak256::new();
+    if a <= b {
+        hasher.update(a);
+        hasher.update(b);
+    } else {
+        hasher.update(b);
+        hasher.update(a);
+    }
     hasher.finalize().into()
 }
 
-/// Hash a withdrawal to create a leaf
+/// Hash a withdrawal leaf — matches Solidity:
+/// `keccak256(abi.encodePacked(user, assetId, amount, chainId))`
+/// where assetId/amount/chainId are uint256 (32 bytes big-endian)
 pub fn hash_withdrawal(
     user: Address,
     asset_id: AssetId,
     amount: u128,
     chain_id: ChainId,
 ) -> [u8; 32] {
-    let mut hasher = Sha256::new();
+    let mut hasher = Keccak256::new();
+    // address = 20 bytes (abi.encodePacked)
     hasher.update(&user);
-    hasher.update(&asset_id.to_le_bytes());
-    hasher.update(&amount.to_le_bytes());
-    hasher.update(&chain_id.to_le_bytes());
+    // uint256 = 32 bytes big-endian
+    hasher.update(&u256_bytes(asset_id as u128));
+    hasher.update(&u256_bytes(amount));
+    hasher.update(&u256_bytes(chain_id as u128));
     hasher.finalize().into()
 }
 
-/// Hash an NFT release to create a leaf (for claimNft on-chain verification)
+/// Hash an NFT release leaf — matches Solidity:
+/// `keccak256(abi.encodePacked(nftContract, tokenId, buyer, chainId, listingId))`
 pub fn hash_nft_release(
     nft_contract: Address,
     token_id: u64,
@@ -136,40 +158,38 @@ pub fn hash_nft_release(
     nft_chain_id: ChainId,
     listing_id: u64,
 ) -> [u8; 32] {
-    let mut hasher = Sha256::new();
+    let mut hasher = Keccak256::new();
+    // address = 20 bytes
     hasher.update(&nft_contract);
-    hasher.update(&token_id.to_le_bytes());
+    // uint256 = 32 bytes big-endian
+    hasher.update(&u256_bytes(token_id as u128));
+    // address = 20 bytes
     hasher.update(&buyer);
-    hasher.update(&nft_chain_id.to_le_bytes());
-    hasher.update(&listing_id.to_le_bytes());
+    // uint256 = 32 bytes big-endian
+    hasher.update(&u256_bytes(nft_chain_id as u128));
+    hasher.update(&u256_bytes(listing_id as u128));
     hasher.finalize().into()
+}
+
+/// Convert a u128 value to 32-byte big-endian (EVM uint256 format)
+fn u256_bytes(val: u128) -> [u8; 32] {
+    let mut bytes = [0u8; 32];
+    bytes[16..32].copy_from_slice(&val.to_be_bytes());
+    bytes
 }
 
 /// Hash state data to create a leaf for state root
 pub fn hash_state_leaf(data: &[u8]) -> [u8; 32] {
-    let mut hasher = Sha256::new();
+    let mut hasher = Keccak256::new();
     hasher.update(data);
     hasher.finalize().into()
 }
 
-/// Verify a Merkle proof
-///
-/// This verifies that a leaf is included in a Merkle tree with the given root.
-/// The proof should be generated by the same tree structure.
-///
-/// # Arguments
-/// * `leaf` - The leaf hash to verify
-/// * `proof` - The Merkle proof (list of sibling hashes from leaf to root)
-/// * `root` - The expected Merkle root
-/// * `leaf_index` - The index of the leaf in the original tree (required for trees with >2 leaves)
-///
-/// # Returns
-/// `true` if the proof is valid, `false` otherwise
+/// Verify a Merkle proof (sorted-pair keccak256, Solidity-compatible)
 pub fn verify_merkle_proof(
     leaf: &[u8; 32],
     proof: &[[u8; 32]],
     root: &[u8; 32],
-    leaf_index: Option<usize>,
 ) -> bool {
     if proof.is_empty() {
         return leaf == root;
@@ -177,40 +197,8 @@ pub fn verify_merkle_proof(
 
     let mut current = *leaf;
 
-    // If we have the leaf index, use it to correctly track position at each level
-    if let Some(mut idx) = leaf_index {
-        for sibling in proof {
-            // Determine if current node is left or right at this level
-            let is_left = idx % 2 == 0;
-
-            if is_left {
-                // Current is left, sibling is right
-                current = hash_pair(&current, sibling);
-            } else {
-                // Current is right, sibling is left
-                current = hash_pair(sibling, &current);
-            }
-
-            // Move to parent level (divide by 2)
-            idx /= 2;
-        }
-    } else {
-        // Without index, we can only verify for simple cases (1-2 leaves)
-        // For trees with >2 leaves, we need the index to determine position
-        // at each level. For backward compatibility, we'll try a simple approach
-        // that works for 2 leaves but may fail for larger trees.
-
-        // Simple heuristic: assume alternating left/right
-        // This works for 2 leaves but not for larger trees
-        let mut is_left = true;
-        for sibling in proof {
-            if is_left {
-                current = hash_pair(&current, sibling);
-            } else {
-                current = hash_pair(sibling, &current);
-            }
-            is_left = !is_left;
-        }
+    for sibling in proof {
+        current = hash_pair_sorted(&current, sibling);
     }
 
     current == *root
@@ -238,53 +226,57 @@ mod tests {
         tree.add_leaf(leaf2);
         let root = tree.root().unwrap();
 
-        // Verify proof
         let proof = tree.proof(0).unwrap();
-        assert!(verify_merkle_proof(&leaf1, &proof, &root, Some(0)));
+        assert!(verify_merkle_proof(&leaf1, &proof, &root));
+
+        let proof = tree.proof(1).unwrap();
+        assert!(verify_merkle_proof(&leaf2, &proof, &root));
     }
 
     #[test]
-    fn test_merkle_tree_multiple_leaves() {
+    fn test_merkle_tree_four_leaves() {
         let mut tree = MerkleTree::new();
-        for i in 0..4 {
-            tree.add_leaf([i as u8; 32]);
+        for i in 0..4u8 {
+            tree.add_leaf([i; 32]);
         }
         let root = tree.root().unwrap();
 
-        // Verify proof for each leaf (using power of 2 for simpler tree structure)
         for i in 0..4 {
             let leaf = [i as u8; 32];
             let proof = tree.proof(i).unwrap();
             assert!(
-                verify_merkle_proof(&leaf, &proof, &root, Some(i)),
-                "Failed to verify proof for leaf {}: proof len={}, root={:?}",
-                i,
-                proof.len(),
-                root
+                verify_merkle_proof(&leaf, &proof, &root),
+                "Failed to verify proof for leaf {}",
+                i
             );
         }
     }
 
     #[test]
-    fn test_merkle_tree_larger_tree() {
-        // Test with 8 leaves to ensure it works for larger trees
+    fn test_merkle_tree_eight_leaves() {
         let mut tree = MerkleTree::new();
-        for i in 0..8 {
-            tree.add_leaf([i as u8; 32]);
+        for i in 0..8u8 {
+            tree.add_leaf([i; 32]);
         }
         let root = tree.root().unwrap();
 
-        // Verify proof for each leaf
         for i in 0..8 {
             let leaf = [i as u8; 32];
             let proof = tree.proof(i).unwrap();
             assert!(
-                verify_merkle_proof(&leaf, &proof, &root, Some(i)),
-                "Failed to verify proof for leaf {}: proof len={}, root={:?}",
-                i,
-                proof.len(),
-                root
+                verify_merkle_proof(&leaf, &proof, &root),
+                "Failed to verify proof for leaf {}",
+                i
             );
         }
+    }
+
+    #[test]
+    fn test_sorted_pair_ordering() {
+        let a = [1u8; 32];
+        let b = [2u8; 32];
+        // hash(a, b) should equal hash(a, b) regardless of call order
+        // because sorted pairs always put smaller first
+        assert_eq!(hash_pair_sorted(&a, &b), hash_pair_sorted(&b, &a));
     }
 }

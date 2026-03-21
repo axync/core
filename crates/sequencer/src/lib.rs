@@ -2,7 +2,7 @@ pub mod config;
 pub mod security;
 mod validation;
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 use axync_prover::{Prover, ProverConfig, ProverError};
 use axync_state::State;
@@ -37,6 +37,10 @@ pub struct Sequencer {
     snapshot_interval: BlockId,
     last_snapshot_block_id: Arc<Mutex<BlockId>>,
     prover: Option<Arc<Prover>>,
+    /// Maps NFT listing_id → block_id where BuyNft was processed
+    listing_sold_block: Arc<Mutex<HashMap<u64, BlockId>>>,
+    /// Maps (address_hex, asset_id, amount, chain_id) → block_id where Withdraw was processed
+    withdrawal_block: Arc<Mutex<HashMap<String, BlockId>>>,
 }
 
 impl Sequencer {
@@ -55,6 +59,8 @@ impl Sequencer {
             snapshot_interval: DEFAULT_SNAPSHOT_INTERVAL,
             last_snapshot_block_id: Arc::new(Mutex::new(0)),
             prover: None,
+            listing_sold_block: Arc::new(Mutex::new(HashMap::new())),
+            withdrawal_block: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -493,6 +499,24 @@ impl Sequencer {
 
         match apply_block(&mut state, &block.transactions, block.timestamp) {
             Ok(()) => {
+                // Record BuyNft/Withdraw → block_id mappings for proof generation
+                {
+                    let mut sold_map = self.listing_sold_block.lock().unwrap();
+                    let mut wd_map = self.withdrawal_block.lock().unwrap();
+                    for tx in &block.transactions {
+                        match &tx.payload {
+                            axync_types::TxPayload::BuyNft(buy) => {
+                                sold_map.insert(buy.listing_id, block.id);
+                            }
+                            axync_types::TxPayload::Withdraw(w) => {
+                                let key = format!("{}:{}:{}:{}", hex::encode(tx.from), w.asset_id, w.amount, w.chain_id);
+                                wd_map.insert(key, block.id);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+
                 let mut block_id = self.current_block_id.lock().unwrap();
                 *block_id += 1;
                 drop(block_id);
@@ -555,6 +579,136 @@ impl Sequencer {
         let block = self.build_block_with_proof(generate_proof)?;
         self.execute_block(block.clone())?;
         Ok(block)
+    }
+
+    /// Get block_id where a listing was sold (BuyNft processed)
+    pub fn get_listing_sold_block(&self, listing_id: u64) -> Option<BlockId> {
+        self.listing_sold_block.lock().unwrap().get(&listing_id).copied()
+    }
+
+    /// Get block_id where a withdrawal was processed
+    pub fn get_withdrawal_block(&self, from: &[u8; 20], asset_id: u16, amount: u128, chain_id: u64) -> Option<BlockId> {
+        let key = format!("{}:{}:{}:{}", hex::encode(from), asset_id, amount, chain_id);
+        self.withdrawal_block.lock().unwrap().get(&key).copied()
+    }
+
+    /// Generate merkle proof for a sold NFT listing by loading the block and rebuilding the tree
+    pub fn generate_nft_release_proof(&self, listing_id: u64) -> Result<(Vec<[u8; 32]>, [u8; 32]), SequencerError> {
+        let block_id = self.get_listing_sold_block(listing_id)
+            .ok_or_else(|| SequencerError::StorageError("Listing not found in any block".to_string()))?;
+
+        let storage = self.storage.as_ref()
+            .ok_or_else(|| SequencerError::StorageError("No storage configured".to_string()))?;
+
+        let block = storage.get_block(block_id)
+            .map_err(|e| SequencerError::StorageError(format!("Failed to load block: {:?}", e)))?
+            .ok_or_else(|| SequencerError::StorageError(format!("Block {} not found", block_id)))?;
+
+        // Rebuild the merkle tree from block transactions
+        use axync_prover::merkle::{hash_nft_release, hash_withdrawal, MerkleTree};
+        let mut tree = MerkleTree::new();
+        let mut target_leaf_index: Option<usize> = None;
+
+        let state = self.state.lock().unwrap();
+
+        for tx in &block.transactions {
+            match &tx.payload {
+                axync_types::TxPayload::Withdraw(w) => {
+                    let leaf = hash_withdrawal(tx.from, w.asset_id, w.amount, w.chain_id);
+                    tree.add_leaf(leaf);
+                }
+                axync_types::TxPayload::BuyNft(buy) => {
+                    if let Some(listing) = state.get_nft_listing(buy.listing_id) {
+                        let leaf = hash_nft_release(
+                            listing.nft_contract,
+                            listing.token_id,
+                            listing.buyer,
+                            listing.nft_chain_id,
+                            listing.on_chain_listing_id,
+                        );
+                        if buy.listing_id == listing_id {
+                            target_leaf_index = Some(tree.len());
+                        }
+                        tree.add_leaf(leaf);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        drop(state);
+
+        let leaf_index = target_leaf_index
+            .ok_or_else(|| SequencerError::StorageError("BuyNft tx not found in block".to_string()))?;
+
+        let root = tree.root().map_err(|e| {
+            SequencerError::ProverError(format!("Failed to compute root: {:?}", e))
+        })?;
+
+        let proof = tree.proof(leaf_index).map_err(|e| {
+            SequencerError::ProverError(format!("Failed to generate proof: {:?}", e))
+        })?;
+
+        Ok((proof, root))
+    }
+
+    /// Generate merkle proof for a withdrawal
+    pub fn generate_withdrawal_proof(&self, from: &[u8; 20], asset_id: u16, amount: u128, chain_id: u64) -> Result<(Vec<[u8; 32]>, [u8; 32]), SequencerError> {
+        let block_id = self.get_withdrawal_block(from, asset_id, amount, chain_id)
+            .ok_or_else(|| SequencerError::StorageError("Withdrawal not found in any block".to_string()))?;
+
+        let storage = self.storage.as_ref()
+            .ok_or_else(|| SequencerError::StorageError("No storage configured".to_string()))?;
+
+        let block = storage.get_block(block_id)
+            .map_err(|e| SequencerError::StorageError(format!("Failed to load block: {:?}", e)))?
+            .ok_or_else(|| SequencerError::StorageError(format!("Block {} not found", block_id)))?;
+
+        use axync_prover::merkle::{hash_nft_release, hash_withdrawal, MerkleTree};
+        let mut tree = MerkleTree::new();
+        let mut target_leaf_index: Option<usize> = None;
+
+        let state = self.state.lock().unwrap();
+
+        for tx in &block.transactions {
+            match &tx.payload {
+                axync_types::TxPayload::Withdraw(w) => {
+                    let leaf = hash_withdrawal(tx.from, w.asset_id, w.amount, w.chain_id);
+                    if tx.from == *from && w.asset_id == asset_id && w.amount == amount && w.chain_id == chain_id {
+                        target_leaf_index = Some(tree.len());
+                    }
+                    tree.add_leaf(leaf);
+                }
+                axync_types::TxPayload::BuyNft(buy) => {
+                    if let Some(listing) = state.get_nft_listing(buy.listing_id) {
+                        let leaf = hash_nft_release(
+                            listing.nft_contract,
+                            listing.token_id,
+                            listing.buyer,
+                            listing.nft_chain_id,
+                            listing.on_chain_listing_id,
+                        );
+                        tree.add_leaf(leaf);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        drop(state);
+
+        let leaf_index = target_leaf_index
+            .ok_or_else(|| SequencerError::StorageError("Withdraw tx not found in block".to_string()))?;
+
+        let root = tree.root().map_err(|e| {
+            SequencerError::ProverError(format!("Failed to compute root: {:?}", e))
+        })?;
+
+        let proof = tree.proof(leaf_index).map_err(|e| {
+            SequencerError::ProverError(format!("Failed to generate proof: {:?}", e))
+        })?;
+
+        Ok((proof, root))
     }
 
     pub fn get_state(&self) -> Arc<Mutex<State>> {

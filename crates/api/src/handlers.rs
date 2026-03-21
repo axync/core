@@ -1406,7 +1406,7 @@ pub async fn get_nft_release_proof(
         ));
     }
 
-    // Compute the NFT release leaf
+    // Compute the NFT release leaf (keccak256, ABI-compatible)
     let leaf = axync_prover::merkle::hash_nft_release(
         listing.nft_contract,
         listing.token_id,
@@ -1415,27 +1415,119 @@ pub async fn get_nft_release_proof(
         listing.on_chain_listing_id,
     );
 
-    // For now, return the leaf hash. Full merkle proof requires
-    // finding the block where this BuyNft tx was included and
-    // regenerating the tree. Placeholder for v1.
+    // Compute nullifier (keccak256)
     let nullifier = {
-        use sha2::{Digest, Sha256};
-        let mut hasher = Sha256::new();
+        use sha3::{Digest, Keccak256};
+        let mut hasher = Keccak256::new();
         hasher.update(&leaf);
         hasher.update(&listing.on_chain_listing_id.to_le_bytes());
         let result: [u8; 32] = hasher.finalize().into();
         result
     };
 
+    let listing_id_copy = listing.id;
+    let on_chain_listing_id = listing.on_chain_listing_id;
+    let buyer = listing.buyer;
+    let nft_contract = listing.nft_contract;
+    let token_id = listing.token_id;
+    let nft_chain_id = listing.nft_chain_id;
+    drop(state_guard);
+
+    // Generate real merkle proof by loading the block and rebuilding the tree
+    let (proof_siblings, _root) = state.sequencer.generate_nft_release_proof(listing_id_copy)
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "ProofError".to_string(),
+                    message: format!("Failed to generate merkle proof: {:?}", e),
+                }),
+            )
+        })?;
+
+    // Serialize proof as concatenated 32-byte siblings (matches Solidity bytes calldata)
+    let merkle_proof_hex = format!("0x{}", proof_siblings.iter()
+        .map(|s| hex::encode(s))
+        .collect::<String>());
+
     Ok(Json(serde_json::json!({
-        "listing_id": listing.id,
-        "on_chain_listing_id": listing.on_chain_listing_id,
-        "buyer": format!("0x{}", hex::encode(listing.buyer)),
-        "nft_contract": format!("0x{}", hex::encode(listing.nft_contract)),
-        "token_id": listing.token_id,
-        "nft_chain_id": listing.nft_chain_id,
+        "listing_id": listing_id_copy,
+        "on_chain_listing_id": on_chain_listing_id,
+        "buyer": format!("0x{}", hex::encode(buyer)),
+        "nft_contract": format!("0x{}", hex::encode(nft_contract)),
+        "token_id": token_id,
+        "nft_chain_id": nft_chain_id,
         "leaf": format!("0x{}", hex::encode(leaf)),
         "nullifier": format!("0x{}", hex::encode(nullifier)),
-        "merkle_proof": "0x01", // placeholder proof (accepted by placeholder verifier)
+        "merkle_proof": merkle_proof_hex,
+    })))
+}
+
+/// GET /api/v1/withdrawal-proof/:address/:asset_id/:amount/:chain_id
+pub async fn get_withdrawal_proof(
+    State(state): State<Arc<ApiState>>,
+    Path((address, asset_id, amount, chain_id)): Path<(String, u16, String, u64)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let address_clean = address.strip_prefix("0x").unwrap_or(&address);
+    let address_bytes: [u8; 20] = hex::decode(address_clean)
+        .map_err(|_| (StatusCode::BAD_REQUEST, Json(ErrorResponse {
+            error: "InvalidAddress".to_string(),
+            message: "Invalid address format".to_string(),
+        })))?
+        .try_into()
+        .map_err(|_| (StatusCode::BAD_REQUEST, Json(ErrorResponse {
+            error: "InvalidAddress".to_string(),
+            message: "Address must be 20 bytes".to_string(),
+        })))?;
+
+    let amount_u128: u128 = amount.parse().map_err(|_| (StatusCode::BAD_REQUEST, Json(ErrorResponse {
+        error: "InvalidAmount".to_string(),
+        message: "Invalid amount".to_string(),
+    })))?;
+
+    // Compute the withdrawal leaf (keccak256, ABI-compatible)
+    let leaf = axync_prover::merkle::hash_withdrawal(
+        address_bytes,
+        asset_id,
+        amount_u128,
+        chain_id,
+    );
+
+    // Compute nullifier
+    let nullifier = {
+        use sha3::{Digest, Keccak256};
+        let mut hasher = Keccak256::new();
+        hasher.update(&leaf);
+        hasher.update(&address_bytes);
+        hasher.update(&chain_id.to_le_bytes());
+        let result: [u8; 32] = hasher.finalize().into();
+        result
+    };
+
+    // Generate real merkle proof
+    let (proof_siblings, _root) = state.sequencer.generate_withdrawal_proof(
+        &address_bytes, asset_id, amount_u128, chain_id
+    ).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "ProofError".to_string(),
+                message: format!("Failed to generate merkle proof: {:?}", e),
+            }),
+        )
+    })?;
+
+    let merkle_proof_hex = format!("0x{}", proof_siblings.iter()
+        .map(|s| hex::encode(s))
+        .collect::<String>());
+
+    Ok(Json(serde_json::json!({
+        "user": format!("0x{}", hex::encode(address_bytes)),
+        "asset_id": asset_id,
+        "amount": amount,
+        "chain_id": chain_id,
+        "leaf": format!("0x{}", hex::encode(leaf)),
+        "nullifier": format!("0x{}", hex::encode(nullifier)),
+        "merkle_proof": merkle_proof_hex,
     })))
 }

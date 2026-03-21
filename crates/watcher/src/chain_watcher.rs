@@ -56,6 +56,12 @@ impl ChainWatcher {
         let latest_block = self.rpc_client.get_block_number().await?;
         let mut last_processed = *self.last_processed_block.lock().await;
 
+        // On first poll, start from configured start_block
+        if last_processed == 0 && self.config.start_block > 0 {
+            last_processed = self.config.start_block;
+            *self.last_processed_block.lock().await = last_processed;
+        }
+
         // Check for reorgs by verifying block hash
         if last_processed > 0 {
             if let Err(e) = self.check_reorg(last_processed).await {
@@ -207,26 +213,26 @@ impl ChainWatcher {
             }
         }
 
-        // Process NftMarketplace events
-        if let Some(ref marketplace_addr) = self.config.marketplace_contract_address {
-            let marketplace_logs = self
+        // Process AxyncEscrow events
+        if let Some(ref escrow_addr) = self.config.escrow_contract_address {
+            let escrow_logs = self
                 .rpc_client
-                .get_logs(block_number, block_number, marketplace_addr)
+                .get_logs(block_number, block_number, escrow_addr)
                 .await?;
 
-            if !marketplace_logs.is_empty() {
+            if !escrow_logs.is_empty() {
                 debug!(
                     chain_id = self.config.chain_id,
                     block = block_number,
-                    log_count = marketplace_logs.len(),
-                    "Processing block (marketplace)"
+                    log_count = escrow_logs.len(),
+                    "Processing block (escrow)"
                 );
             }
 
             let nft_listed_sig = "0xfebb39f58e20b82053b272222107ed5076573054a0becf582b5800513501d34b";
             let nft_cancelled_sig = "0xe8580d4b2abe8e4b73ec7f0ee6709642b78d94be0a89c3609cdddf6f119155e3";
 
-            for log in &marketplace_logs {
+            for log in &escrow_logs {
                 let tx_hash = self.parse_tx_hash(log)?;
 
                 let processed = self.processed_txs.lock().await;

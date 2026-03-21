@@ -226,7 +226,7 @@ fn apply_cancel_deal(
     Ok(())
 }
 
-// ── NFT Marketplace STF ──
+// ── NFT Escrow STF ──
 
 /// Created by watcher from NftListed on-chain event
 fn apply_list_nft(

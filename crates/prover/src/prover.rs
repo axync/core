@@ -171,9 +171,8 @@ impl Prover {
         );
 
         // Note: For proper verification with trees >2 leaves, we need the withdrawal index.
-        // For now, we pass None which works for simple cases (1-2 leaves).
-        // In production, the withdrawal index should be passed to this function.
-        if !verify_merkle_proof(&leaf, &merkle_proof, withdrawals_root, None) {
+        // Sorted-pair keccak256 verification (no leaf_index needed)
+        if !verify_merkle_proof(&leaf, &merkle_proof, withdrawals_root) {
             return Err(ProverError::InvalidWithdrawalsRoot(
                 "Merkle proof verification failed".to_string(),
             ));

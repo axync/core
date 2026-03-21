@@ -6,13 +6,14 @@ pub struct ChainConfig {
     pub chain_id: ChainId,
     pub rpc_url: String,
     pub vault_contract_address: String,
-    pub marketplace_contract_address: Option<String>,
+    pub escrow_contract_address: Option<String>,
     pub required_confirmations: u64,
     pub poll_interval_seconds: u64,
     pub rpc_timeout_seconds: u64,
     pub max_retries: u32,
     pub retry_delay_seconds: u64,
     pub reorg_safety_blocks: u64,
+    pub start_block: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -28,7 +29,7 @@ impl Default for ChainConfig {
                 .unwrap_or_else(|_| "https://eth.llamarpc.com".to_string()),
             vault_contract_address: std::env::var("VAULT_CONTRACT_ADDRESS")
                 .unwrap_or_else(|_| "0x0000000000000000000000000000000000000000".to_string()),
-            marketplace_contract_address: std::env::var("MARKETPLACE_CONTRACT_ADDRESS").ok(),
+            escrow_contract_address: std::env::var("ESCROW_CONTRACT_ADDRESS").ok(),
             required_confirmations: std::env::var("REQUIRED_CONFIRMATIONS")
                 .ok()
                 .and_then(|v| v.parse().ok())
@@ -53,6 +54,10 @@ impl Default for ChainConfig {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(10),
+            start_block: std::env::var("START_BLOCK")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0),
         }
     }
 }
@@ -69,13 +74,14 @@ impl Default for WatcherConfig {
                         .unwrap_or_else(|_| {
                             "0x0000000000000000000000000000000000000000".to_string()
                         }),
-                    marketplace_contract_address: std::env::var("ETHEREUM_MARKETPLACE_CONTRACT").ok(),
+                    escrow_contract_address: std::env::var("ETHEREUM_ESCROW_CONTRACT").ok(),
                     required_confirmations: 12,
                     poll_interval_seconds: 3,
                     rpc_timeout_seconds: 30,
                     max_retries: 3,
                     retry_delay_seconds: 1,
                     reorg_safety_blocks: 10,
+                    start_block: 0,
                 },
                 ChainConfig {
                     chain_id: axync_types::chain_ids::BASE,
@@ -85,13 +91,14 @@ impl Default for WatcherConfig {
                         .unwrap_or_else(|_| {
                             "0x0000000000000000000000000000000000000000".to_string()
                         }),
-                    marketplace_contract_address: std::env::var("BASE_MARKETPLACE_CONTRACT").ok(),
+                    escrow_contract_address: std::env::var("BASE_ESCROW_CONTRACT").ok(),
                     required_confirmations: 12,
                     poll_interval_seconds: 3,
                     rpc_timeout_seconds: 30,
                     max_retries: 3,
                     retry_delay_seconds: 1,
                     reorg_safety_blocks: 10,
+                    start_block: 0,
                 },
             ],
         }
