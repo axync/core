@@ -240,8 +240,10 @@ fn apply_list_nft(
     let listing = NftListing {
         id,
         seller: payload.seller,
+        asset_type: payload.asset_type,
         nft_contract: payload.nft_contract,
         token_id: payload.token_id,
+        amount: payload.amount,
         nft_chain_id: payload.nft_chain_id,
         price: payload.price,
         payment_chain_id: payload.payment_chain_id,

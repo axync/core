@@ -230,7 +230,9 @@ impl ChainWatcher {
             }
 
             let nft_listed_sig = "0xfebb39f58e20b82053b272222107ed5076573054a0becf582b5800513501d34b";
+            let token_listed_sig = "0xe9f33fbfcd71bdbfdd2c2a95058cbb3f5378444a2676e6cfb173a65cfce389e6";
             let nft_cancelled_sig = "0xe8580d4b2abe8e4b73ec7f0ee6709642b78d94be0a89c3609cdddf6f119155e3";
+            let listing_cancelled_sig = "0x411aee90354c51b1b04cd563fcab2617142a9d50da19232d888547c8a1b7fd8a";
 
             for log in &escrow_logs {
                 let tx_hash = self.parse_tx_hash(log)?;
@@ -281,7 +283,38 @@ impl ChainWatcher {
                             error!(error = %e, "Failed to parse NftListed log");
                         }
                     }
-                } else if event_sig == nft_cancelled_sig {
+                } else if event_sig == token_listed_sig {
+                    // TokenListed: topics=[sig, listingId, seller], data=[tokenContract, amount, price, paymentChainId]
+                    match self.parse_token_listed_log(log) {
+                        Ok((seller, token_contract, amount, price, payment_chain_id, listing_id)) => {
+                            match self.processor.process_token_listed_event(
+                                self.config.chain_id,
+                                seller,
+                                token_contract,
+                                amount,
+                                price,
+                                payment_chain_id,
+                                listing_id,
+                            ) {
+                                Ok(_) => {
+                                    let mut processed = self.processed_txs.lock().await;
+                                    processed.insert(tx_hash);
+                                    info!(
+                                        chain_id = self.config.chain_id,
+                                        listing_id = listing_id,
+                                        "Processed TokenListed"
+                                    );
+                                }
+                                Err(e) => {
+                                    error!(error = %e, "Failed to process TokenListed");
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            error!(error = %e, "Failed to parse TokenListed log");
+                        }
+                    }
+                } else if event_sig == nft_cancelled_sig || event_sig == listing_cancelled_sig {
                     match self.parse_nft_cancelled_log(log) {
                         Ok(listing_id) => {
                             match self.processor.process_nft_cancelled_event(listing_id) {
@@ -291,16 +324,16 @@ impl ChainWatcher {
                                     info!(
                                         chain_id = self.config.chain_id,
                                         listing_id = listing_id,
-                                        "Processed NftCancelled"
+                                        "Processed ListingCancelled"
                                     );
                                 }
                                 Err(e) => {
-                                    error!(error = %e, "Failed to process NftCancelled");
+                                    error!(error = %e, "Failed to process ListingCancelled");
                                 }
                             }
                         }
                         Err(e) => {
-                            error!(error = %e, "Failed to parse NftCancelled log");
+                            error!(error = %e, "Failed to parse ListingCancelled log");
                         }
                     }
                 }
@@ -378,6 +411,56 @@ impl ChainWatcher {
         let payment_chain_id = u64::from_be_bytes(chain_id_bytes);
 
         Ok((seller, nft_contract, token_id, price, payment_chain_id, listing_id))
+    }
+
+    /// Parse TokenListed event: topics=[sig, listingId, seller], data=[tokenContract, amount, price, paymentChainId]
+    fn parse_token_listed_log(
+        &self,
+        log: &serde_json::Value,
+    ) -> anyhow::Result<(axync_types::Address, axync_types::Address, u128, u128, u64, u64)> {
+        let topics = log["topics"]
+            .as_array()
+            .ok_or_else(|| anyhow::anyhow!("Missing topics"))?;
+
+        if topics.len() < 3 {
+            return Err(anyhow::anyhow!("TokenListed: expected 3 topics"));
+        }
+
+        let listing_id_hex = topics[1].as_str().unwrap_or("0x0");
+        let listing_id = u64::from_str_radix(listing_id_hex.trim_start_matches("0x"), 16)?;
+
+        let seller_hex = topics[2].as_str().unwrap_or("0x0");
+        let seller_bytes = hex::decode(seller_hex.trim_start_matches("0x"))?;
+        let mut seller = [0u8; 20];
+        seller.copy_from_slice(&seller_bytes[12..32]);
+
+        let data = log["data"].as_str().unwrap_or("0x");
+        let data_bytes = hex::decode(data.trim_start_matches("0x"))?;
+
+        if data_bytes.len() < 128 {
+            return Err(anyhow::anyhow!("TokenListed: data too short"));
+        }
+
+        // tokenContract (address)
+        let mut token_contract = [0u8; 20];
+        token_contract.copy_from_slice(&data_bytes[12..32]);
+
+        // amount (uint256 → u128)
+        let mut amount_bytes = [0u8; 16];
+        amount_bytes.copy_from_slice(&data_bytes[48..64]);
+        let amount = u128::from_be_bytes(amount_bytes);
+
+        // price (uint256 → u128)
+        let mut price_bytes = [0u8; 16];
+        price_bytes.copy_from_slice(&data_bytes[80..96]);
+        let price = u128::from_be_bytes(price_bytes);
+
+        // paymentChainId (uint256 → u64)
+        let mut chain_id_bytes = [0u8; 8];
+        chain_id_bytes.copy_from_slice(&data_bytes[120..128]);
+        let payment_chain_id = u64::from_be_bytes(chain_id_bytes);
+
+        Ok((seller, token_contract, amount, price, payment_chain_id, listing_id))
     }
 
     /// Parse NftCancelled event: topics=[sig, listingId]

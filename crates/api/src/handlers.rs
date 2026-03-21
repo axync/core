@@ -1473,14 +1473,23 @@ pub async fn get_nft_release_proof(
         ));
     }
 
-    // Compute the NFT release leaf (keccak256, ABI-compatible)
-    let leaf = axync_prover::merkle::hash_nft_release(
-        listing.nft_contract,
-        listing.token_id,
-        listing.buyer,
-        listing.nft_chain_id,
-        listing.on_chain_listing_id,
-    );
+    // Compute release leaf based on asset type
+    let leaf = match listing.asset_type {
+        axync_types::AssetType::ERC721 => axync_prover::merkle::hash_nft_release(
+            listing.nft_contract,
+            listing.token_id,
+            listing.buyer,
+            listing.nft_chain_id,
+            listing.on_chain_listing_id,
+        ),
+        axync_types::AssetType::ERC20 => axync_prover::merkle::hash_token_release(
+            listing.nft_contract,
+            listing.amount,
+            listing.buyer,
+            listing.nft_chain_id,
+            listing.on_chain_listing_id,
+        ),
+    };
 
     // Compute nullifier (keccak256)
     let nullifier = {

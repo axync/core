@@ -75,6 +75,12 @@ pub enum DealStatus {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum AssetType {
+    ERC721,
+    ERC20,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum NftListingStatus {
     Active,
     Sold,
@@ -86,11 +92,16 @@ pub struct NftListing {
     pub id: NftListingId,
     #[serde(with = "serde_bytes")]
     pub seller: Address,
-    /// ERC-721 contract address
+    pub asset_type: AssetType,
+    /// Token contract address (ERC-721 or ERC-20)
     #[serde(with = "serde_bytes")]
     pub nft_contract: Address,
+    /// ERC-721 token ID (0 for ERC-20)
     pub token_id: u64,
-    /// Chain where the NFT lives (and is escrowed)
+    /// ERC-20 amount (0 for ERC-721)
+    #[serde(default)]
+    pub amount: u128,
+    /// Chain where the asset lives (and is escrowed)
     pub nft_chain_id: ChainId,
     /// Price in wei (ETH)
     pub price: u128,
@@ -237,14 +248,18 @@ pub struct Withdraw {
     pub chain_id: ChainId,
 }
 
-/// Created by watcher when NftListed event is detected on-chain
+/// Created by watcher when NftListed/TokenListed event is detected on-chain
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ListNft {
     #[serde(with = "serde_bytes")]
     pub seller: Address,
+    pub asset_type: AssetType,
     #[serde(with = "serde_bytes")]
     pub nft_contract: Address,
     pub token_id: u64,
+    /// ERC-20 amount (0 for ERC-721)
+    #[serde(default)]
+    pub amount: u128,
     pub nft_chain_id: ChainId,
     pub price: u128,
     pub payment_chain_id: ChainId,
