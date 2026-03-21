@@ -32,4 +32,5 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 futures = "0.3"
 reqwest = { version = "0.11", features = ["json"] }
 anyhow = "1.0"
+sha2 = "0.10"
 

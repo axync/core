@@ -231,6 +231,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 rpc_url,
                 vault_contract_address: std::env::var("ETHEREUM_VAULT_CONTRACT")
                     .unwrap_or_else(|_| "0x0000000000000000000000000000000000000000".to_string()),
+                marketplace_contract_address: std::env::var("ETHEREUM_MARKETPLACE_CONTRACT").ok(),
                 required_confirmations: std::env::var("ETHEREUM_REQUIRED_CONFIRMATIONS")
                     .ok()
                     .and_then(|v| v.parse().ok())
@@ -257,7 +258,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .unwrap_or(10),
             });
         }
-        
+
         // Base chain (Base Sepolia testnet or mainnet)
         if let Ok(rpc_url) = std::env::var("BASE_RPC_URL") {
             let chain_id = std::env::var("BASE_CHAIN_ID")
@@ -270,6 +271,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 rpc_url,
                 vault_contract_address: std::env::var("BASE_VAULT_CONTRACT")
                     .unwrap_or_else(|_| "0x0000000000000000000000000000000000000000".to_string()),
+                marketplace_contract_address: std::env::var("BASE_MARKETPLACE_CONTRACT").ok(),
                 required_confirmations: std::env::var("BASE_REQUIRED_CONFIRMATIONS")
                     .ok()
                     .and_then(|v| v.parse().ok())
@@ -312,6 +314,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .unwrap_or_else(|_| "http://localhost:8545".to_string()),
                 vault_contract_address: std::env::var("VAULT_CONTRACT_ADDRESS")
                     .unwrap_or_else(|_| "0x0000000000000000000000000000000000000000".to_string()),
+                marketplace_contract_address: std::env::var("MARKETPLACE_CONTRACT_ADDRESS").ok(),
                 required_confirmations: std::env::var("REQUIRED_CONFIRMATIONS")
                     .ok()
                     .and_then(|v| v.parse().ok())

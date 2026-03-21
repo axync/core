@@ -180,6 +180,43 @@ fn compute_struct_hash(tx: &Tx) -> [u8; 32] {
             fields.extend_from_slice(&encode_uint64(p.deal_id));
             (type_hash, fields)
         }
+        axync_types::TxPayload::ListNft(p) => {
+            let type_hash = Keccak256::digest(
+                b"ListNft(address from,uint64 nonce,address seller,address nftContract,uint64 tokenId,uint64 nftChainId,uint128 price,uint64 paymentChainId,uint64 onChainListingId)"
+            );
+            let mut fields = Vec::new();
+            fields.extend_from_slice(&encode_address(&tx.from));
+            fields.extend_from_slice(&encode_uint64(tx.nonce));
+            fields.extend_from_slice(&encode_address(&p.seller));
+            fields.extend_from_slice(&encode_address(&p.nft_contract));
+            fields.extend_from_slice(&encode_uint64(p.token_id));
+            fields.extend_from_slice(&encode_uint64(p.nft_chain_id));
+            fields.extend_from_slice(&encode_uint128(p.price));
+            fields.extend_from_slice(&encode_uint64(p.payment_chain_id));
+            fields.extend_from_slice(&encode_uint64(p.on_chain_listing_id));
+            (type_hash, fields)
+        }
+        axync_types::TxPayload::BuyNft(p) => {
+            let type_hash = Keccak256::digest(
+                b"BuyNft(address from,uint64 nonce,uint64 listingId)"
+            );
+            let mut fields = Vec::new();
+            fields.extend_from_slice(&encode_address(&tx.from));
+            fields.extend_from_slice(&encode_uint64(tx.nonce));
+            fields.extend_from_slice(&encode_uint64(p.listing_id));
+            (type_hash, fields)
+        }
+        axync_types::TxPayload::CancelNftListing(p) => {
+            let type_hash = Keccak256::digest(
+                b"CancelNftListing(address from,uint64 nonce,uint64 listingId,uint64 onChainListingId)"
+            );
+            let mut fields = Vec::new();
+            fields.extend_from_slice(&encode_address(&tx.from));
+            fields.extend_from_slice(&encode_uint64(tx.nonce));
+            fields.extend_from_slice(&encode_uint64(p.listing_id));
+            fields.extend_from_slice(&encode_uint64(p.on_chain_listing_id));
+            (type_hash, fields)
+        }
     };
 
     let mut data = Vec::new();
