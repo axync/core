@@ -67,10 +67,13 @@ impl Default for WatcherConfig {
         Self {
             chains: vec![
                 ChainConfig {
-                    chain_id: axync_types::chain_ids::ETHEREUM,
+                    chain_id: std::env::var("ETHEREUM_CHAIN_ID")
+                        .ok().and_then(|v| v.parse().ok())
+                        .unwrap_or(axync_types::chain_ids::ETHEREUM),
                     rpc_url: std::env::var("ETHEREUM_RPC_URL")
                         .unwrap_or_else(|_| "https://eth.llamarpc.com".to_string()),
-                    vault_contract_address: std::env::var("ETHEREUM_VAULT_CONTRACT")
+                    vault_contract_address: std::env::var("ETHEREUM_DEPOSIT_CONTRACT")
+                        .or_else(|_| std::env::var("ETHEREUM_VAULT_CONTRACT"))
                         .unwrap_or_else(|_| {
                             "0x0000000000000000000000000000000000000000".to_string()
                         }),
@@ -85,10 +88,13 @@ impl Default for WatcherConfig {
                         .ok().and_then(|v| v.parse().ok()).unwrap_or(0),
                 },
                 ChainConfig {
-                    chain_id: axync_types::chain_ids::BASE,
+                    chain_id: std::env::var("BASE_CHAIN_ID")
+                        .ok().and_then(|v| v.parse().ok())
+                        .unwrap_or(axync_types::chain_ids::BASE),
                     rpc_url: std::env::var("BASE_RPC_URL")
                         .unwrap_or_else(|_| "https://mainnet.base.org".to_string()),
-                    vault_contract_address: std::env::var("BASE_VAULT_CONTRACT")
+                    vault_contract_address: std::env::var("BASE_DEPOSIT_CONTRACT")
+                        .or_else(|_| std::env::var("BASE_VAULT_CONTRACT"))
                         .unwrap_or_else(|_| {
                             "0x0000000000000000000000000000000000000000".to_string()
                         }),
