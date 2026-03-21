@@ -279,6 +279,12 @@ pub enum SubmitTransactionRequest {
         nonce: u64,
         signature: String, // hex string (65 bytes)
     },
+    BuyNft {
+        from: String, // hex string
+        listing_id: u64,
+        nonce: u64,
+        signature: String, // hex string (65 bytes)
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]

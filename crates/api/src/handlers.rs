@@ -986,6 +986,73 @@ pub async fn submit_transaction(
 
             (tx, from_address)
         }
+        SubmitTransactionRequest::BuyNft {
+            from,
+            listing_id,
+            nonce,
+            signature,
+        } => {
+            let from_bytes = hex::decode(from.trim_start_matches("0x"))
+                .map_err(|_| {
+                    (
+                        StatusCode::BAD_REQUEST,
+                        Json(ErrorResponse {
+                            error: "InvalidAddress".to_string(),
+                            message: "Invalid from address format".to_string(),
+                        }),
+                    )
+                })?;
+
+            if from_bytes.len() != 20 {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(ErrorResponse {
+                        error: "InvalidAddress".to_string(),
+                        message: "From address must be 20 bytes".to_string(),
+                    }),
+                ));
+            }
+
+            let mut from_address = [0u8; 20];
+            from_address.copy_from_slice(&from_bytes);
+
+            let sig_bytes = hex::decode(signature.trim_start_matches("0x"))
+                .map_err(|_| {
+                    (
+                        StatusCode::BAD_REQUEST,
+                        Json(ErrorResponse {
+                            error: "InvalidSignature".to_string(),
+                            message: "Invalid signature format".to_string(),
+                        }),
+                    )
+                })?;
+
+            if sig_bytes.len() != 65 {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(ErrorResponse {
+                        error: "InvalidSignature".to_string(),
+                        message: "Signature must be 65 bytes".to_string(),
+                    }),
+                ));
+            }
+
+            let mut sig = [0u8; 65];
+            sig.copy_from_slice(&sig_bytes);
+
+            let tx = Tx {
+                id: 0,
+                from: from_address,
+                nonce,
+                kind: TxKind::BuyNft,
+                payload: TxPayload::BuyNft(axync_types::BuyNft {
+                    listing_id,
+                }),
+                signature: sig,
+            };
+
+            (tx, from_address)
+        }
     };
 
     // Serialize transaction before submitting (for tx_hash generation)
