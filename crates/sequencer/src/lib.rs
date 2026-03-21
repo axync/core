@@ -337,7 +337,7 @@ impl Sequencer {
         }
 
         let new_state_root = self.compute_state_root(&new_state)?;
-        let withdrawals_root = self.compute_withdrawals_root(&transactions)?;
+        let withdrawals_root = self.compute_withdrawals_root_with_state(&transactions, &new_state)?;
 
         // Generate proof if requested and prover is available
         let block_proof = if generate_proof {
@@ -451,13 +451,13 @@ impl Sequencer {
         Ok(hasher.finalize().into())
     }
 
-    /// Compute withdrawals root from transactions (includes NFT release leaves)
-    fn compute_withdrawals_root(&self, transactions: &[Tx]) -> Result<[u8; 32], SequencerError> {
+    /// Compute withdrawals root from transactions using the post-execution state
+    fn compute_withdrawals_root_with_state(&self, transactions: &[Tx], new_state: &State) -> Result<[u8; 32], SequencerError> {
         use axync_prover::merkle::{hash_nft_release, hash_withdrawal, MerkleTree};
 
         let mut tree = MerkleTree::new();
 
-        let state = self.state.lock().unwrap();
+        let state = new_state;
 
         for tx in transactions {
             match &tx.payload {
@@ -481,8 +481,6 @@ impl Sequencer {
                 _ => {}
             }
         }
-
-        drop(state);
 
         tree.root().map_err(|e| {
             SequencerError::ProverError(format!("Failed to compute withdrawals root: {:?}", e))
