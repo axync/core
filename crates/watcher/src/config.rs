@@ -75,13 +75,14 @@ impl Default for WatcherConfig {
                             "0x0000000000000000000000000000000000000000".to_string()
                         }),
                     escrow_contract_address: std::env::var("ETHEREUM_ESCROW_CONTRACT").ok(),
-                    required_confirmations: 12,
+                    required_confirmations: 2,
                     poll_interval_seconds: 3,
                     rpc_timeout_seconds: 30,
                     max_retries: 3,
                     retry_delay_seconds: 1,
-                    reorg_safety_blocks: 10,
-                    start_block: 0,
+                    reorg_safety_blocks: 5,
+                    start_block: std::env::var("ETHEREUM_START_BLOCK")
+                        .ok().and_then(|v| v.parse().ok()).unwrap_or(0),
                 },
                 ChainConfig {
                     chain_id: axync_types::chain_ids::BASE,
@@ -92,13 +93,14 @@ impl Default for WatcherConfig {
                             "0x0000000000000000000000000000000000000000".to_string()
                         }),
                     escrow_contract_address: std::env::var("BASE_ESCROW_CONTRACT").ok(),
-                    required_confirmations: 12,
+                    required_confirmations: 2,
                     poll_interval_seconds: 3,
                     rpc_timeout_seconds: 30,
                     max_retries: 3,
                     retry_delay_seconds: 1,
-                    reorg_safety_blocks: 10,
-                    start_block: 0,
+                    reorg_safety_blocks: 5,
+                    start_block: std::env::var("BASE_START_BLOCK")
+                        .ok().and_then(|v| v.parse().ok()).unwrap_or(0),
                 },
             ],
         }
