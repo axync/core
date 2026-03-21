@@ -453,7 +453,7 @@ impl Sequencer {
 
     /// Compute withdrawals root from transactions using the post-execution state
     fn compute_withdrawals_root_with_state(&self, transactions: &[Tx], new_state: &State) -> Result<[u8; 32], SequencerError> {
-        use axync_prover::merkle::{hash_nft_release, hash_withdrawal, MerkleTree};
+        use axync_prover::merkle::{hash_nft_release, hash_token_release, hash_withdrawal, MerkleTree};
 
         let mut tree = MerkleTree::new();
 
@@ -466,15 +466,8 @@ impl Sequencer {
                     tree.add_leaf(leaf);
                 }
                 axync_types::TxPayload::BuyNft(buy) => {
-                    // Add NFT release leaf so buyer can claim on-chain
                     if let Some(listing) = state.get_nft_listing(buy.listing_id) {
-                        let leaf = hash_nft_release(
-                            listing.nft_contract,
-                            listing.token_id,
-                            listing.buyer,
-                            listing.nft_chain_id,
-                            listing.on_chain_listing_id,
-                        );
+                        let leaf = Self::compute_release_leaf(&listing);
                         tree.add_leaf(leaf);
                     }
                 }
@@ -485,6 +478,27 @@ impl Sequencer {
         tree.root().map_err(|e| {
             SequencerError::ProverError(format!("Failed to compute withdrawals root: {:?}", e))
         })
+    }
+
+    /// Compute release leaf for a listing based on asset type
+    fn compute_release_leaf(listing: &axync_types::NftListing) -> [u8; 32] {
+        use axync_prover::merkle::{hash_nft_release, hash_token_release};
+        match listing.asset_type {
+            axync_types::AssetType::ERC721 => hash_nft_release(
+                listing.nft_contract,
+                listing.token_id,
+                listing.buyer,
+                listing.nft_chain_id,
+                listing.on_chain_listing_id,
+            ),
+            axync_types::AssetType::ERC20 => hash_token_release(
+                listing.nft_contract,
+                listing.amount,
+                listing.buyer,
+                listing.nft_chain_id,
+                listing.on_chain_listing_id,
+            ),
+        }
     }
 
     pub fn execute_block(&self, block: Block) -> Result<(), SequencerError> {
@@ -603,7 +617,7 @@ impl Sequencer {
             .ok_or_else(|| SequencerError::StorageError(format!("Block {} not found", block_id)))?;
 
         // Rebuild the merkle tree from block transactions
-        use axync_prover::merkle::{hash_nft_release, hash_withdrawal, MerkleTree};
+        use axync_prover::merkle::{hash_withdrawal, MerkleTree};
         let mut tree = MerkleTree::new();
         let mut target_leaf_index: Option<usize> = None;
 
@@ -617,13 +631,7 @@ impl Sequencer {
                 }
                 axync_types::TxPayload::BuyNft(buy) => {
                     if let Some(listing) = state.get_nft_listing(buy.listing_id) {
-                        let leaf = hash_nft_release(
-                            listing.nft_contract,
-                            listing.token_id,
-                            listing.buyer,
-                            listing.nft_chain_id,
-                            listing.on_chain_listing_id,
-                        );
+                        let leaf = Self::compute_release_leaf(&listing);
                         if buy.listing_id == listing_id {
                             target_leaf_index = Some(tree.len());
                         }
@@ -662,7 +670,7 @@ impl Sequencer {
             .map_err(|e| SequencerError::StorageError(format!("Failed to load block: {:?}", e)))?
             .ok_or_else(|| SequencerError::StorageError(format!("Block {} not found", block_id)))?;
 
-        use axync_prover::merkle::{hash_nft_release, hash_withdrawal, MerkleTree};
+        use axync_prover::merkle::{hash_withdrawal, MerkleTree};
         let mut tree = MerkleTree::new();
         let mut target_leaf_index: Option<usize> = None;
 
@@ -679,13 +687,7 @@ impl Sequencer {
                 }
                 axync_types::TxPayload::BuyNft(buy) => {
                     if let Some(listing) = state.get_nft_listing(buy.listing_id) {
-                        let leaf = hash_nft_release(
-                            listing.nft_contract,
-                            listing.token_id,
-                            listing.buyer,
-                            listing.nft_chain_id,
-                            listing.on_chain_listing_id,
-                        );
+                        let leaf = Self::compute_release_leaf(&listing);
                         tree.add_leaf(leaf);
                     }
                 }
