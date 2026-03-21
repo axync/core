@@ -149,8 +149,8 @@ pub fn hash_withdrawal(
     hasher.finalize().into()
 }
 
-/// Hash an NFT release leaf — matches Solidity:
-/// `keccak256(abi.encodePacked(nftContract, tokenId, buyer, chainId, listingId))`
+/// Hash an ERC-721 release leaf — matches Solidity:
+/// `keccak256(abi.encodePacked(tokenContract, tokenId, buyer, chainId, listingId))`
 pub fn hash_nft_release(
     nft_contract: Address,
     token_id: u64,
@@ -159,14 +159,28 @@ pub fn hash_nft_release(
     listing_id: u64,
 ) -> [u8; 32] {
     let mut hasher = Keccak256::new();
-    // address = 20 bytes
     hasher.update(&nft_contract);
-    // uint256 = 32 bytes big-endian
     hasher.update(&u256_bytes(token_id as u128));
-    // address = 20 bytes
     hasher.update(&buyer);
-    // uint256 = 32 bytes big-endian
     hasher.update(&u256_bytes(nft_chain_id as u128));
+    hasher.update(&u256_bytes(listing_id as u128));
+    hasher.finalize().into()
+}
+
+/// Hash an ERC-20 release leaf — matches Solidity:
+/// `keccak256(abi.encodePacked(tokenContract, amount, buyer, chainId, listingId))`
+pub fn hash_token_release(
+    token_contract: Address,
+    amount: u128,
+    buyer: Address,
+    chain_id: ChainId,
+    listing_id: u64,
+) -> [u8; 32] {
+    let mut hasher = Keccak256::new();
+    hasher.update(&token_contract);
+    hasher.update(&u256_bytes(amount));
+    hasher.update(&buyer);
+    hasher.update(&u256_bytes(chain_id as u128));
     hasher.update(&u256_bytes(listing_id as u128));
     hasher.finalize().into()
 }

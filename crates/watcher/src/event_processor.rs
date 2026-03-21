@@ -67,8 +67,10 @@ impl EventProcessor {
     ) -> anyhow::Result<()> {
         let list_nft = ListNft {
             seller,
+            asset_type: axync_types::AssetType::ERC721,
             nft_contract,
             token_id,
+            amount: 0,
             nft_chain_id,
             price,
             payment_chain_id,
@@ -96,6 +98,53 @@ impl EventProcessor {
         self.sequencer
             .submit_tx_with_validation(tx, false)
             .map_err(|e| anyhow::anyhow!("Failed to submit ListNft tx: {:?}", e))?;
+
+        Ok(())
+    }
+
+    pub fn process_token_listed_event(
+        &self,
+        chain_id: ChainId,
+        seller: Address,
+        token_contract: Address,
+        amount: u128,
+        price: u128,
+        payment_chain_id: u64,
+        on_chain_listing_id: u64,
+    ) -> anyhow::Result<()> {
+        let list_nft = ListNft {
+            seller,
+            asset_type: axync_types::AssetType::ERC20,
+            nft_contract: token_contract,
+            token_id: 0,
+            amount,
+            nft_chain_id: chain_id,
+            price,
+            payment_chain_id,
+            on_chain_listing_id,
+        };
+
+        let nonce = {
+            let state_handle = self.sequencer.get_state();
+            let state_guard = state_handle.lock().unwrap();
+            state_guard
+                .get_account_by_address(seller)
+                .map(|a| a.nonce)
+                .unwrap_or(0)
+        };
+
+        let tx = Tx {
+            id: 0,
+            from: seller,
+            nonce,
+            kind: TxKind::ListNft,
+            payload: TxPayload::ListNft(list_nft),
+            signature: [0u8; 65],
+        };
+
+        self.sequencer
+            .submit_tx_with_validation(tx, false)
+            .map_err(|e| anyhow::anyhow!("Failed to submit ListToken tx: {:?}", e))?;
 
         Ok(())
     }
