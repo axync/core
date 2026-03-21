@@ -229,13 +229,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             chains.push(axync_watcher::ChainConfig {
                 chain_id,
                 rpc_url,
-                vault_contract_address: std::env::var("ETHEREUM_VAULT_CONTRACT")
+                vault_contract_address: std::env::var("ETHEREUM_DEPOSIT_CONTRACT")
+                    .or_else(|_| std::env::var("ETHEREUM_VAULT_CONTRACT"))
                     .unwrap_or_else(|_| "0x0000000000000000000000000000000000000000".to_string()),
                 escrow_contract_address: std::env::var("ETHEREUM_ESCROW_CONTRACT").ok(),
                 required_confirmations: std::env::var("ETHEREUM_REQUIRED_CONFIRMATIONS")
                     .ok()
                     .and_then(|v| v.parse().ok())
-                    .unwrap_or(12),
+                    .unwrap_or(2),
                 poll_interval_seconds: std::env::var("POLL_INTERVAL_SECONDS")
                     .ok()
                     .and_then(|v| v.parse().ok())
@@ -255,8 +256,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 reorg_safety_blocks: std::env::var("REORG_SAFETY_BLOCKS")
                     .ok()
                     .and_then(|v| v.parse().ok())
-                    .unwrap_or(10),
-                start_block: std::env::var("START_BLOCK")
+                    .unwrap_or(5),
+                start_block: std::env::var("ETHEREUM_START_BLOCK")
+                    .or_else(|_| std::env::var("START_BLOCK"))
                     .ok()
                     .and_then(|v| v.parse().ok())
                     .unwrap_or(0),
@@ -269,17 +271,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(axync_types::chain_ids::BASE);
-            
+
             chains.push(axync_watcher::ChainConfig {
                 chain_id,
                 rpc_url,
-                vault_contract_address: std::env::var("BASE_VAULT_CONTRACT")
+                vault_contract_address: std::env::var("BASE_DEPOSIT_CONTRACT")
+                    .or_else(|_| std::env::var("BASE_VAULT_CONTRACT"))
                     .unwrap_or_else(|_| "0x0000000000000000000000000000000000000000".to_string()),
                 escrow_contract_address: std::env::var("BASE_ESCROW_CONTRACT").ok(),
                 required_confirmations: std::env::var("BASE_REQUIRED_CONFIRMATIONS")
                     .ok()
                     .and_then(|v| v.parse().ok())
-                    .unwrap_or(12),
+                    .unwrap_or(2),
                 poll_interval_seconds: std::env::var("POLL_INTERVAL_SECONDS")
                     .ok()
                     .and_then(|v| v.parse().ok())
@@ -299,8 +302,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 reorg_safety_blocks: std::env::var("REORG_SAFETY_BLOCKS")
                     .ok()
                     .and_then(|v| v.parse().ok())
-                    .unwrap_or(10),
-                start_block: std::env::var("START_BLOCK")
+                    .unwrap_or(5),
+                start_block: std::env::var("BASE_START_BLOCK")
+                    .or_else(|_| std::env::var("START_BLOCK"))
                     .ok()
                     .and_then(|v| v.parse().ok())
                     .unwrap_or(0),
