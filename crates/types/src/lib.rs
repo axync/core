@@ -100,7 +100,7 @@ pub struct NftListing {
     #[serde(with = "serde_bytes")]
     pub buyer: Address,
     pub created_at: u64,
-    /// Listing ID in the on-chain NftMarketplace contract
+    /// Listing ID in the on-chain AxyncEscrow contract
     pub on_chain_listing_id: u64,
 }
 
