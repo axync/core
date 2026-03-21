@@ -240,7 +240,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 poll_interval_seconds: std::env::var("POLL_INTERVAL_SECONDS")
                     .ok()
                     .and_then(|v| v.parse().ok())
-                    .unwrap_or(3),
+                    .unwrap_or(15),
                 rpc_timeout_seconds: std::env::var("RPC_TIMEOUT_SECONDS")
                     .ok()
                     .and_then(|v| v.parse().ok())
@@ -252,7 +252,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 retry_delay_seconds: std::env::var("RETRY_DELAY_SECONDS")
                     .ok()
                     .and_then(|v| v.parse().ok())
-                    .unwrap_or(1),
+                    .unwrap_or(2),
                 reorg_safety_blocks: std::env::var("REORG_SAFETY_BLOCKS")
                     .ok()
                     .and_then(|v| v.parse().ok())
@@ -286,7 +286,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 poll_interval_seconds: std::env::var("POLL_INTERVAL_SECONDS")
                     .ok()
                     .and_then(|v| v.parse().ok())
-                    .unwrap_or(3),
+                    .unwrap_or(15),
                 rpc_timeout_seconds: std::env::var("RPC_TIMEOUT_SECONDS")
                     .ok()
                     .and_then(|v| v.parse().ok())
@@ -298,7 +298,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 retry_delay_seconds: std::env::var("RETRY_DELAY_SECONDS")
                     .ok()
                     .and_then(|v| v.parse().ok())
-                    .unwrap_or(1),
+                    .unwrap_or(2),
                 reorg_safety_blocks: std::env::var("REORG_SAFETY_BLOCKS")
                     .ok()
                     .and_then(|v| v.parse().ok())
