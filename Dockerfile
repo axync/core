@@ -1,74 +1,48 @@
-# Multi-stage build for optimized image size
-FROM rust:latest AS builder
+# Build stage
+FROM rust:1.82-slim-bookworm AS builder
 
 WORKDIR /app
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y \
-    pkg-config \
-    libssl-dev \
-    libclang-dev \
-    clang \
-    && rm -rf /var/lib/apt/lists/*
+# Install build deps
+RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
 
-# Copy dependency files for caching
+# Copy manifests first for cache
 COPY Cargo.toml Cargo.lock ./
-COPY crates ./crates
+COPY crates/types/Cargo.toml crates/types/
+COPY crates/state/Cargo.toml crates/state/
+COPY crates/stf/Cargo.toml crates/stf/
+COPY crates/storage/Cargo.toml crates/storage/
+COPY crates/prover/Cargo.toml crates/prover/
+COPY crates/sequencer/Cargo.toml crates/sequencer/
+COPY crates/watcher/Cargo.toml crates/watcher/
+COPY crates/api/Cargo.toml crates/api/
+COPY crates/demo/Cargo.toml crates/demo/
 
-# Build dependencies and project
-# Use release profile for optimization
-RUN cargo build --release -p axync-api --features rocksdb
+# Create dummy src files for dep cache
+RUN mkdir -p crates/types/src crates/state/src crates/stf/src crates/storage/src \
+    crates/prover/src crates/sequencer/src crates/watcher/src crates/api/src crates/demo/src && \
+    for d in types state stf storage prover sequencer watcher api demo; do echo "" > crates/$d/src/lib.rs; done && \
+    echo "fn main() {}" > crates/api/src/main.rs && \
+    echo "fn main() {}" > crates/demo/src/main.rs
 
-# Final image
-# Use Ubuntu 24.04 which has GLIBC 2.39 (compatible with rust:latest builds)
-FROM ubuntu:24.04
+RUN cargo build --release --bin axync-api 2>/dev/null || true
 
-# Install required libraries for RocksDB and runtime
-RUN apt-get update && apt-get install -y \
-    libgcc-s1 \
-    libc6 \
-    libstdc++6 \
-    ca-certificates \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+# Copy real source
+COPY crates/ crates/
+RUN touch crates/*/src/*.rs
 
-# Create non-root user for security
-# Remove existing user with UID 1000 if it exists, then create axync user
-RUN if getent passwd 1000 > /dev/null 2>&1; then \
-        EXISTING_USER=$(getent passwd 1000 | cut -d: -f1); \
-        userdel -r "$EXISTING_USER" 2>/dev/null || true; \
-    fi && \
-    useradd -m -u 1000 axync && \
-    mkdir -p /app/data && \
-    chown -R axync:axync /app
+RUN cargo build --release --bin axync-api
+
+# Runtime stage
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+COPY --from=builder /app/target/release/axync-api .
 
-# Copy compiled binary
-COPY --from=builder /app/target/release/axync-api /app/axync-api
+RUN mkdir -p data
 
-# Set ownership
-RUN chown axync:axync /app/axync-api && \
-    chmod +x /app/axync-api
-
-# Switch to non-root user
-USER axync
-
-# Environment variables
-ENV RUST_LOG=info
-ENV DATA_DIR=/app/data
-ENV STORAGE_PATH=/app/data
-ENV BLOCK_INTERVAL_SEC=1
-ENV MAX_QUEUE_SIZE=10000
-ENV MAX_TXS_PER_BLOCK=100
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:8080/health || exit 1
-
-# Expose port
 EXPOSE 8080
 
-# Run application
 CMD ["./axync-api"]
-
