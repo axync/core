@@ -56,9 +56,19 @@ impl ChainWatcher {
         let latest_block = self.rpc_client.get_block_number().await?;
         let mut last_processed = *self.last_processed_block.lock().await;
 
-        // On first poll, start from configured start_block
-        if last_processed == 0 && self.config.start_block > 0 {
-            last_processed = self.config.start_block;
+        // On first poll, start from configured start_block or latest block
+        if last_processed == 0 {
+            if self.config.start_block > 0 {
+                last_processed = self.config.start_block;
+            } else {
+                // Default to latest block to avoid scanning from genesis
+                last_processed = latest_block.saturating_sub(self.config.required_confirmations);
+                info!(
+                    chain_id = self.config.chain_id,
+                    block = last_processed,
+                    "No start_block configured, starting from latest block"
+                );
+            }
             *self.last_processed_block.lock().await = last_processed;
         }
 

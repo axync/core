@@ -53,12 +53,14 @@ impl HardhatNode {
             chain_id: 31337,
             rpc_url: HARDHAT_RPC.to_string(),
             vault_contract_address: "0x0".to_string(),
+            escrow_contract_address: None,
             required_confirmations: 1,
             poll_interval_seconds: 1,
             rpc_timeout_seconds: 5,
             max_retries: 1,
             retry_delay_seconds: 1,
             reorg_safety_blocks: 2,
+            start_block: 0,
         };
         let client = RpcClient::new(config);
         client.get_block_number().await.is_ok()
