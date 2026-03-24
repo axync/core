@@ -1,95 +1,69 @@
-use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::time::{interval, Duration};
 use axync_api::{create_router, ApiState};
-use axync_prover::{Prover, ProverConfig};
+use axync_prover::Prover;
 use axync_sequencer::Sequencer;
 use axync_sequencer::SequencerError;
 #[cfg(not(feature = "rocksdb"))]
 use axync_storage::InMemoryStorage;
 #[cfg(feature = "rocksdb")]
 use axync_storage::RocksDBStorage;
-use axync_watcher::{Watcher, WatcherConfig};
+use axync_watcher::Watcher;
 
-fn get_block_interval_seconds() -> u64 {
-    std::env::var("BLOCK_INTERVAL_SEC")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(axync_sequencer::config::DEFAULT_BLOCK_INTERVAL_SECONDS)
-}
-
-fn get_storage_path() -> PathBuf {
-    std::env::var("STORAGE_PATH")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("./data"))
-}
+mod config;
 
 fn init_storage() -> Result<Arc<dyn axync_storage::Storage>, Box<dyn std::error::Error>> {
     #[cfg(feature = "rocksdb")]
     {
-        let path = get_storage_path();
-        std::fs::create_dir_all(&path)
-            .map_err(|e| format!("Failed to create storage directory: {}", e))?;
-
-        println!("Initializing RocksDB storage at: {}", path.display());
+        let path = config::storage_path();
+        std::fs::create_dir_all(&path)?;
+        println!("Storage: RocksDB at {}", path.display());
         let storage = RocksDBStorage::open(&path)
-            .map_err(|e| format!("Failed to open RocksDB storage: {:?}", e))?;
-
+            .map_err(|e| format!("Failed to open RocksDB: {:?}", e))?;
         Ok(Arc::new(storage))
     }
 
     #[cfg(not(feature = "rocksdb"))]
     {
-        println!("Using InMemoryStorage (RocksDB not enabled)");
+        println!("Storage: InMemory");
         Ok(Arc::new(InMemoryStorage::new()))
     }
 }
 
 async fn block_production_task(sequencer: Arc<Sequencer>) {
-    let interval_secs = get_block_interval_seconds();
-    let mut interval_timer = interval(Duration::from_secs(interval_secs));
-    let mut consecutive_errors = 0;
-    const MAX_CONSECUTIVE_ERRORS: u32 = 10;
+    let interval_secs = config::block_interval_sec();
+    let mut timer = interval(Duration::from_secs(interval_secs));
+    let mut consecutive_errors = 0u32;
 
-    println!(
-        "Block production task started (interval: {}s)",
-        interval_secs
-    );
+    println!("Block production task started (interval: {}s)", interval_secs);
 
     loop {
-        interval_timer.tick().await;
+        timer.tick().await;
 
         if !sequencer.has_pending_txs() {
-            consecutive_errors = 0; // Reset error counter on successful skip
+            consecutive_errors = 0;
             continue;
         }
 
-        // Build and execute block with proof generation enabled
         match sequencer.build_and_execute_block_with_proof(true) {
             Ok(block) => {
-                consecutive_errors = 0; // Reset error counter on success
+                consecutive_errors = 0;
                 println!(
                     "Block {} created and executed: {} transactions, queue: {}",
-                    block.id,
-                    block.transactions.len(),
-                    sequencer.queue_length()
+                    block.id, block.transactions.len(), sequencer.queue_length()
                 );
             }
             Err(SequencerError::NoTransactions) => {
-                // Queue was empty between check and build - skip
                 consecutive_errors = 0;
             }
             Err(e) => {
                 consecutive_errors += 1;
-                eprintln!("Failed to create/execute block (error {}/{}): {:?}", 
-                    consecutive_errors, MAX_CONSECUTIVE_ERRORS, e);
-                
-                // If too many consecutive errors, wait longer before retrying
-                if consecutive_errors >= MAX_CONSECUTIVE_ERRORS {
-                    eprintln!("Too many consecutive errors, waiting 60s before retrying...");
+                eprintln!("Block production error ({}/10): {:?}", consecutive_errors, e);
+                if consecutive_errors >= 10 {
+                    eprintln!("Too many errors, backing off 60s...");
                     tokio::time::sleep(Duration::from_secs(60)).await;
-                    consecutive_errors = 0; // Reset after backoff
+                    consecutive_errors = 0;
                 }
             }
         }
@@ -98,106 +72,63 @@ async fn block_production_task(sequencer: Arc<Sequencer>) {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize tracing
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
-    // Initialize storage
+
+    // Storage
     let storage = init_storage()?;
     let storage_trait: Arc<dyn axync_storage::Storage> = storage.clone();
 
-    // Initialize prover (optional - will use placeholders if not configured)
-    let prover_config = ProverConfig {
-        use_placeholders: std::env::var("USE_PLACEHOLDER_PROVER")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(false),
-        groth16_keys_dir: std::env::var("GROTH16_KEYS_DIR")
-            .ok()
-            .map(std::path::PathBuf::from),
-        force_regenerate_keys: std::env::var("FORCE_REGENERATE_KEYS")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(false),
-        ..Default::default()
-    };
-
-    let prover = match Prover::new(prover_config) {
+    // Prover
+    let prover = match Prover::new(config::prover_config()) {
         Ok(p) => {
-            println!("Prover initialized successfully");
+            println!("Prover initialized");
             Some(Arc::new(p))
         }
         Err(e) => {
-            eprintln!(
-                "Warning: Failed to initialize prover: {:?}. Continuing without proof generation.",
-                e
-            );
+            eprintln!("Warning: Prover init failed: {:?}. Continuing without proofs.", e);
             None
         }
     };
 
-    // Initialize sequencer with storage (will load state from storage if available)
-    println!("Initializing sequencer with storage...");
+    // Sequencer
     let mut sequencer = Sequencer::with_storage_arc(storage.clone())
-        .map_err(|e| format!("Failed to initialize sequencer with storage: {:?}", e))?;
+        .map_err(|e| format!("Sequencer init failed: {:?}", e))?;
 
-    // Set prover if available
     if let Some(ref prover) = prover {
         sequencer = sequencer.with_prover(Arc::clone(prover));
-        println!("Prover attached to sequencer");
     }
 
     let sequencer = Arc::new(sequencer);
-
     println!("Sequencer initialized with storage");
     println!("Current block ID: {}", sequencer.get_current_block_id());
 
-    // Initialize rate limiting
-    let max_requests = std::env::var("RATE_LIMIT_MAX_REQUESTS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(100);
-    let window_seconds = std::env::var("RATE_LIMIT_WINDOW_SECONDS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(60);
-    let rate_limit_state = Arc::new(axync_api::RateLimitState::new(max_requests, window_seconds));
+    // Rate limiting
+    let rate_limit_state = Arc::new(axync_api::RateLimitState::new(
+        config::rate_limit_max_requests(),
+        config::rate_limit_window_seconds(),
+    ));
 
-    // Initialize vesting marketplace readers
-    let marketplace_rpc = std::env::var("MARKETPLACE_RPC_URL")
-        .or_else(|_| std::env::var("ETHEREUM_RPC_URL"))
-        .unwrap_or_else(|_| "https://ethereum-sepolia-rpc.publicnode.com".to_string());
-
-    let escrow_contract = std::env::var("ESCROW_CONTRACT").unwrap_or_default();
-
+    // Marketplace readers
+    let marketplace_rpc = config::marketplace_rpc();
     let vesting_reader = Arc::new(axync_api::vesting::VestingReader::new(marketplace_rpc.clone()));
     let nft_reader = Arc::new(axync_api::nft::NftReader::new(marketplace_rpc.clone()));
-    let escrow_reader = if !escrow_contract.is_empty() {
-        Some(Arc::new(axync_api::escrow::EscrowReader::new(marketplace_rpc.clone(), escrow_contract)))
-    } else {
+
+    let escrow_reader = config::escrow_contract().map(|addr| {
+        Arc::new(axync_api::escrow::EscrowReader::new(marketplace_rpc.clone(), addr))
+    });
+    if escrow_reader.is_none() {
         println!("Warning: ESCROW_CONTRACT not set, listings endpoints disabled");
-        None
-    };
+    }
 
-    // Known vesting contracts (configurable via env)
-    let sablier_contracts: Vec<String> = std::env::var("SABLIER_CONTRACTS")
-        .unwrap_or_else(|_| "0x6b0307b4338f2963A62106028E3B074C2c0510DA".to_string()) // Sepolia default
-        .split(',')
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect();
-
-    let hedgey_contracts: Vec<String> = std::env::var("HEDGEY_CONTRACTS")
-        .unwrap_or_else(|_| "0xb49d0CD3D5290adb4aF1eBA7A6B90CdE8B9265ff".to_string()) // Sepolia default
-        .split(',')
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect();
-
+    let sablier = config::sablier_contracts();
+    let hedgey = config::hedgey_contracts();
     println!("Marketplace RPC: {}", marketplace_rpc);
-    println!("Sablier contracts: {:?}", sablier_contracts);
-    println!("Hedgey contracts: {:?}", hedgey_contracts);
+    println!("Sablier contracts: {:?}", sablier);
+    println!("Hedgey contracts: {:?}", hedgey);
 
+    // API state
     let api_state = Arc::new(ApiState {
         sequencer: sequencer.clone(),
         storage: Some(storage_trait),
@@ -205,174 +136,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         vesting_reader: Some(vesting_reader),
         escrow_reader,
         nft_reader: Some(nft_reader),
-        sablier_contracts,
-        hedgey_contracts,
+        sablier_contracts: sablier,
+        hedgey_contracts: hedgey,
     });
 
     let app = create_router(api_state);
 
-    // Create watcher config
-    // If ETHEREUM_RPC_URL or BASE_RPC_URL are set, use them for testnet/mainnet
-    // If only RPC_URL is set, use it for local Hardhat network
-    // Otherwise, use default config (mainnet)
-    let watcher_config = if std::env::var("ETHEREUM_RPC_URL").is_ok() || std::env::var("BASE_RPC_URL").is_ok() {
-        // Testnet/Mainnet mode - use multiple chains from environment
-        let mut chains = Vec::new();
-        
-        // Ethereum chain (Sepolia testnet or mainnet)
-        if let Ok(rpc_url) = std::env::var("ETHEREUM_RPC_URL") {
-            let chain_id = std::env::var("ETHEREUM_CHAIN_ID")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(axync_types::chain_ids::ETHEREUM);
-            
-            chains.push(axync_watcher::ChainConfig {
-                chain_id,
-                rpc_url,
-                vault_contract_address: std::env::var("ETHEREUM_DEPOSIT_CONTRACT")
-                    .or_else(|_| std::env::var("ETHEREUM_VAULT_CONTRACT"))
-                    .unwrap_or_else(|_| "0x0000000000000000000000000000000000000000".to_string()),
-                escrow_contract_address: std::env::var("ETHEREUM_ESCROW_CONTRACT").ok(),
-                required_confirmations: std::env::var("ETHEREUM_REQUIRED_CONFIRMATIONS")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(2),
-                poll_interval_seconds: std::env::var("POLL_INTERVAL_SECONDS")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(15),
-                rpc_timeout_seconds: std::env::var("RPC_TIMEOUT_SECONDS")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(30),
-                max_retries: std::env::var("MAX_RETRIES")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(3),
-                retry_delay_seconds: std::env::var("RETRY_DELAY_SECONDS")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(2),
-                reorg_safety_blocks: std::env::var("REORG_SAFETY_BLOCKS")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(5),
-                start_block: std::env::var("ETHEREUM_START_BLOCK")
-                    .or_else(|_| std::env::var("START_BLOCK"))
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(0),
-            });
-        }
-
-        // Base chain (Base Sepolia testnet or mainnet)
-        if let Ok(rpc_url) = std::env::var("BASE_RPC_URL") {
-            let chain_id = std::env::var("BASE_CHAIN_ID")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(axync_types::chain_ids::BASE);
-
-            chains.push(axync_watcher::ChainConfig {
-                chain_id,
-                rpc_url,
-                vault_contract_address: std::env::var("BASE_DEPOSIT_CONTRACT")
-                    .or_else(|_| std::env::var("BASE_VAULT_CONTRACT"))
-                    .unwrap_or_else(|_| "0x0000000000000000000000000000000000000000".to_string()),
-                escrow_contract_address: std::env::var("BASE_ESCROW_CONTRACT").ok(),
-                required_confirmations: std::env::var("BASE_REQUIRED_CONFIRMATIONS")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(2),
-                poll_interval_seconds: std::env::var("POLL_INTERVAL_SECONDS")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(15),
-                rpc_timeout_seconds: std::env::var("RPC_TIMEOUT_SECONDS")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(30),
-                max_retries: std::env::var("MAX_RETRIES")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(3),
-                retry_delay_seconds: std::env::var("RETRY_DELAY_SECONDS")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(2),
-                reorg_safety_blocks: std::env::var("REORG_SAFETY_BLOCKS")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(5),
-                start_block: std::env::var("BASE_START_BLOCK")
-                    .or_else(|_| std::env::var("START_BLOCK"))
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(0),
-            });
-        }
-        
-        WatcherConfig { chains }
-    } else if std::env::var("RPC_URL").is_ok() {
-        // Local development mode - use single chain config from environment
-        let chain_id = std::env::var("CHAIN_ID")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(31337); // Hardhat default
-        
-        WatcherConfig {
-            chains: vec![axync_watcher::ChainConfig {
-                chain_id,
-                rpc_url: std::env::var("RPC_URL")
-                    .unwrap_or_else(|_| "http://localhost:8545".to_string()),
-                vault_contract_address: std::env::var("VAULT_CONTRACT_ADDRESS")
-                    .unwrap_or_else(|_| "0x0000000000000000000000000000000000000000".to_string()),
-                escrow_contract_address: std::env::var("ESCROW_CONTRACT_ADDRESS").ok(),
-                required_confirmations: std::env::var("REQUIRED_CONFIRMATIONS")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(0),
-                poll_interval_seconds: std::env::var("POLL_INTERVAL_SECONDS")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(3),
-                rpc_timeout_seconds: std::env::var("RPC_TIMEOUT_SECONDS")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(30),
-                max_retries: std::env::var("MAX_RETRIES")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(3),
-                retry_delay_seconds: std::env::var("RETRY_DELAY_SECONDS")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(1),
-                reorg_safety_blocks: std::env::var("REORG_SAFETY_BLOCKS")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(0),
-                start_block: std::env::var("START_BLOCK")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(0),
-            }],
-        }
-    } else {
-        // Production mode - use default config (mainnet)
-        WatcherConfig::default()
-    };
-    
+    // Watcher
+    let watcher_config = config::watcher_config();
     let watcher = Watcher::new(sequencer.clone(), watcher_config);
 
-    let listener = TcpListener::bind("0.0.0.0:8080").await?;
-    println!("Axync API server listening on http://0.0.0.0:8080");
+    // Server
+    let port = config::port();
+    let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
+    println!("Axync API server listening on http://0.0.0.0:{}", port);
 
-    // Setup graceful shutdown
+    // Graceful shutdown
     let shutdown_signal = async {
         let ctrl_c = async {
-            tokio::signal::ctrl_c()
-                .await
-                .expect("Failed to install Ctrl+C handler");
+            tokio::signal::ctrl_c().await.expect("Failed to install Ctrl+C handler");
         };
 
         #[cfg(unix)]
@@ -392,42 +174,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    // Create shutdown handle for graceful shutdown
     let (shutdown_tx, mut shutdown_rx) = tokio::sync::mpsc::channel::<()>(1);
     let shutdown_tx_clone = shutdown_tx.clone();
 
     let server_handle = tokio::spawn(async move {
         axum::serve(listener, app)
-            .with_graceful_shutdown(async move {
-                shutdown_rx.recv().await;
-            })
+            .with_graceful_shutdown(async move { shutdown_rx.recv().await; })
             .await
     });
 
-    let block_production_handle = tokio::spawn(block_production_task(sequencer.clone()));
+    let block_handle = tokio::spawn(block_production_task(sequencer.clone()));
     let watcher_handle = tokio::spawn(async move {
         if let Err(e) = watcher.start().await {
             eprintln!("Watcher error: {}", e);
         }
     });
 
-    // Wait for shutdown signal
     shutdown_signal.await;
-    println!("Shutdown signal received, starting graceful shutdown...");
+    println!("Shutting down...");
 
-    // Notify server to shutdown
     let _ = shutdown_tx_clone.send(()).await;
-
-    // Wait for server to shutdown
     if let Err(e) = server_handle.await {
         eprintln!("Server shutdown error: {:?}", e);
     }
-
-    // Abort background tasks
-    block_production_handle.abort();
+    block_handle.abort();
     watcher_handle.abort();
 
-    println!("Graceful shutdown completed");
-
+    println!("Shutdown complete");
     Ok(())
 }

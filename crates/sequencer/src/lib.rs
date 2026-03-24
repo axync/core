@@ -453,7 +453,7 @@ impl Sequencer {
 
     /// Compute withdrawals root from transactions using the post-execution state
     fn compute_withdrawals_root_with_state(&self, transactions: &[Tx], new_state: &State) -> Result<[u8; 32], SequencerError> {
-        use axync_prover::merkle::{hash_nft_release, hash_token_release, hash_withdrawal, MerkleTree};
+        use axync_prover::merkle::{hash_withdrawal, MerkleTree};
 
         let mut tree = MerkleTree::new();
 
