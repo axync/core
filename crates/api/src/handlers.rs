@@ -1041,8 +1041,13 @@ pub async fn submit_transaction(
 
     // Serialize transaction before submitting (for tx_hash generation)
     let tx_hash = hex::encode(&bincode::serialize(&tx).unwrap_or_default());
-    
-    match state.sequencer.submit_tx_with_validation(tx, true) {
+
+    // SKIP_SIG_CHECK=1 disables signature verification for local testing
+    let verify_sig = std::env::var("SKIP_SIG_CHECK")
+        .map(|v| v != "1" && v.to_lowercase() != "true")
+        .unwrap_or(true);
+
+    match state.sequencer.submit_tx_with_validation(tx, verify_sig) {
         Ok(()) => {
             Ok(Json(crate::types::SubmitTransactionResponse {
                 tx_hash,
