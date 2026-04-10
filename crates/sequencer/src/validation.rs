@@ -75,7 +75,7 @@ fn recover_address(tx: &Tx) -> Result<Address, ValidationError> {
 // Struct types (each includes from + nonce):
 //   Deposit(address from,uint64 nonce,bytes32 txHash,address account,uint16 assetId,uint128 amount,uint64 chainId)
 //   Withdraw(address from,uint64 nonce,uint16 assetId,uint128 amount,address to,uint64 chainId)
-//   CreateDeal(address from,uint64 nonce,uint64 dealId,string visibility,address taker,uint16 assetBase,uint16 assetQuote,uint64 chainIdBase,uint64 chainIdQuote,uint128 amountBase,uint128 priceQuotePerBase)
+//   CreateDeal(address from,uint64 nonce,uint64 dealId,string visibility,address taker,uint8 offerType,uint16 offerAssetId,uint128 offerAmount,uint64 offerChainId,uint64 offerEscrowId,uint8 consType,uint16 consAssetId,uint128 consAmount,uint64 consChainId)
 //   AcceptDeal(address from,uint64 nonce,uint64 dealId)
 //   CancelDeal(address from,uint64 nonce,uint64 dealId)
 
@@ -138,8 +138,12 @@ fn compute_struct_hash(tx: &Tx) -> [u8; 32] {
             (type_hash, fields)
         }
         axync_types::TxPayload::CreateDeal(p) => {
+            // Offer/consideration are encoded as tagged unions:
+            // offerType: 0 = Fungible, 1 = Escrowed
+            // For Fungible: (assetId, amount, chainId)
+            // For Escrowed: (escrowListingId, 0, 0)
             let type_hash = Keccak256::digest(
-                b"CreateDeal(address from,uint64 nonce,uint64 dealId,string visibility,address taker,uint16 assetBase,uint16 assetQuote,uint64 chainIdBase,uint64 chainIdQuote,uint128 amountBase,uint128 priceQuotePerBase)"
+                b"CreateDeal(address from,uint64 nonce,uint64 dealId,string visibility,address taker,uint8 offerType,uint16 offerAssetId,uint128 offerAmount,uint64 offerChainId,uint64 offerEscrowId,uint8 consType,uint16 consAssetId,uint128 consAmount,uint64 consChainId)"
             );
             let mut fields = Vec::new();
             fields.extend_from_slice(&encode_address(&tx.from));
@@ -152,12 +156,41 @@ fn compute_struct_hash(tx: &Tx) -> [u8; 32] {
             fields.extend_from_slice(&encode_string(vis_str));
             let taker_addr = p.taker.unwrap_or([0u8; 20]);
             fields.extend_from_slice(&encode_address(&taker_addr));
-            fields.extend_from_slice(&encode_uint16(p.asset_base));
-            fields.extend_from_slice(&encode_uint16(p.asset_quote));
-            fields.extend_from_slice(&encode_uint64(p.chain_id_base));
-            fields.extend_from_slice(&encode_uint64(p.chain_id_quote));
-            fields.extend_from_slice(&encode_uint128(p.amount_base));
-            fields.extend_from_slice(&encode_uint128(p.price_quote_per_base));
+
+            // Encode offer
+            match &p.offer {
+                axync_types::TradeAsset::Fungible { asset_id, amount, chain_id } => {
+                    fields.extend_from_slice(&encode_uint8(0)); // offerType = Fungible
+                    fields.extend_from_slice(&encode_uint16(*asset_id));
+                    fields.extend_from_slice(&encode_uint128(*amount));
+                    fields.extend_from_slice(&encode_uint64(*chain_id));
+                    fields.extend_from_slice(&encode_uint64(0)); // offerEscrowId = 0
+                }
+                axync_types::TradeAsset::Escrowed { escrow_listing_id } => {
+                    fields.extend_from_slice(&encode_uint8(1)); // offerType = Escrowed
+                    fields.extend_from_slice(&encode_uint16(0)); // no asset_id
+                    fields.extend_from_slice(&encode_uint128(0)); // no amount
+                    fields.extend_from_slice(&encode_uint64(0)); // no chain_id
+                    fields.extend_from_slice(&encode_uint64(*escrow_listing_id));
+                }
+            }
+
+            // Encode consideration (V1: always Fungible)
+            match &p.consideration {
+                axync_types::TradeAsset::Fungible { asset_id, amount, chain_id } => {
+                    fields.extend_from_slice(&encode_uint8(0)); // consType = Fungible
+                    fields.extend_from_slice(&encode_uint16(*asset_id));
+                    fields.extend_from_slice(&encode_uint128(*amount));
+                    fields.extend_from_slice(&encode_uint64(*chain_id));
+                }
+                axync_types::TradeAsset::Escrowed { .. } => {
+                    // Should not happen in V1, but encode safely
+                    fields.extend_from_slice(&encode_uint8(1));
+                    fields.extend_from_slice(&encode_uint16(0));
+                    fields.extend_from_slice(&encode_uint128(0));
+                    fields.extend_from_slice(&encode_uint64(0));
+                }
+            }
             (type_hash, fields)
         }
         axync_types::TxPayload::AcceptDeal(p) => {
@@ -240,6 +273,12 @@ fn encode_address(addr: &[u8; 20]) -> [u8; 32] {
 fn encode_uint64(val: u64) -> [u8; 32] {
     let mut result = [0u8; 32];
     result[24..32].copy_from_slice(&val.to_be_bytes());
+    result
+}
+
+fn encode_uint8(val: u8) -> [u8; 32] {
+    let mut result = [0u8; 32];
+    result[31] = val;
     result
 }
 
