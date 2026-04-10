@@ -212,11 +212,12 @@ fn apply_accept_deal(
             }
 
             // Scale consideration proportionally: (cons_amt * fill) / offer_amt
-            let consideration_fill = cons_amt
-                .checked_mul(fill)
-                .ok_or(StfError::Overflow)?
-                .checked_div(*offer_amt)
-                .ok_or(StfError::Overflow)?;
+            // Short-circuit for full fill (most common case, avoids overflow)
+            let consideration_fill = if fill == remaining && remaining == *offer_amt {
+                *cons_amt
+            } else {
+                mul_div_u128(*cons_amt, fill, *offer_amt).ok_or(StfError::Overflow)?
+            };
 
             // Taker pays consideration
             sub_balance(state, taker, *cons_aid, consideration_fill, *cons_cid)?;
@@ -475,6 +476,36 @@ fn validate_nonce(state: &mut State, owner: Address, tx_nonce: u64) -> Result<()
 fn increment_nonce(state: &mut State, owner: Address) {
     let account = state.get_or_create_account_by_owner(owner);
     account.nonce += 1;
+}
+
+/// Safe (a * b) / c computation that avoids u128 overflow in the intermediate product.
+/// With 18-decimal tokens, a*b can easily exceed u128::MAX (3.4e38).
+fn mul_div_u128(a: u128, b: u128, c: u128) -> Option<u128> {
+    if c == 0 {
+        return None;
+    }
+    // Fast path: no overflow
+    if let Some(product) = a.checked_mul(b) {
+        return Some(product / c);
+    }
+    // Overflow path: decompose a = (a/c)*c + (a%c), then:
+    //   a*b/c = (a/c)*b + (a%c)*b/c
+    let q = a / c;
+    let r = a % c; // r < c
+    let term1 = q.checked_mul(b)?;
+    match r.checked_mul(b) {
+        Some(rb) => Some(term1 + rb / c),
+        None => {
+            // Both r*b and a*b overflow. Decompose b similarly:
+            //   r*b/c = (b/c)*r + (b%c)*r/c
+            let q2 = b / c;
+            let r2 = b % c; // r2 < c
+            // r < c and r2 < c, so r*r2 < c^2. For c up to ~1.8e19 (u64 range), c^2 < u128::MAX.
+            let term2 = q2.checked_mul(r)?;
+            let term3 = r2.checked_mul(r)? / c;
+            Some(term1 + term2 + term3)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -910,5 +941,131 @@ mod tests {
 
         let account = state.get_account_by_address(addr).unwrap();
         assert_eq!(account.nonce, 5);
+    }
+
+    #[test]
+    fn test_accept_deal_large_amounts_no_overflow() {
+        // Reproduces the u128 overflow bug:
+        // cons_amt(6e17) * fill(1e21) = 6e38 > u128::MAX(3.4e38)
+        let mut state = State::new();
+        let seller = dummy_address(1);
+        let buyer = dummy_address(2);
+        let ts = 1000;
+
+        let token_amount: u128 = 1_000_000_000_000_000_000_000; // 1000e18 tokens
+        let eth_amount: u128 = 600_000_000_000_000_000; // 0.6e18 ETH
+
+        // Seller deposits tokens
+        apply_tx(&mut state, &dummy_tx(seller, 0, TxPayload::Deposit(Deposit {
+            tx_hash: [0u8; 32], account: seller, asset_id: 1,
+            amount: token_amount, chain_id: default_chain_id(),
+        })), ts).unwrap();
+
+        // Buyer deposits ETH
+        apply_tx(&mut state, &dummy_tx(buyer, 0, TxPayload::Deposit(Deposit {
+            tx_hash: [1u8; 32], account: buyer, asset_id: 0,
+            amount: eth_amount, chain_id: default_chain_id(),
+        })), ts).unwrap();
+
+        // Seller creates deal: 1000e18 tokens for 0.6e18 ETH
+        apply_tx(&mut state, &dummy_tx(seller, 1, TxPayload::CreateDeal(CreateDeal {
+            deal_id: 99,
+            visibility: DealVisibility::Public,
+            taker: None,
+            offer: TradeAsset::Fungible { asset_id: 1, amount: token_amount, chain_id: default_chain_id() },
+            consideration: TradeAsset::Fungible { asset_id: 0, amount: eth_amount, chain_id: default_chain_id() },
+            expires_at: None,
+            external_ref: None,
+        })), ts).unwrap();
+
+        // Buyer accepts — this used to overflow in cons_amt.checked_mul(fill)
+        apply_tx(&mut state, &dummy_tx(buyer, 1, TxPayload::AcceptDeal(AcceptDeal {
+            deal_id: 99, amount: None,
+        })), ts).unwrap();
+
+        let deal = state.get_deal(99).unwrap();
+        assert_eq!(deal.status, DealStatus::Settled);
+
+        let seller_eth = state.get_account_by_address(seller).unwrap()
+            .balances.iter().find(|b| b.asset_id == 0).map(|b| b.amount).unwrap_or(0);
+        assert_eq!(seller_eth, eth_amount);
+
+        let buyer_tokens = state.get_account_by_address(buyer).unwrap()
+            .balances.iter().find(|b| b.asset_id == 1).map(|b| b.amount).unwrap_or(0);
+        assert_eq!(buyer_tokens, token_amount);
+    }
+
+    #[test]
+    fn test_accept_deal_partial_fill_large_amounts() {
+        // Partial fill with 18-decimal amounts that would overflow naive multiplication
+        let mut state = State::new();
+        let seller = dummy_address(1);
+        let buyer = dummy_address(2);
+        let ts = 1000;
+
+        let offer_amount: u128 = 1_000_000_000_000_000_000_000; // 1000e18
+        let cons_amount: u128 = 600_000_000_000_000_000; // 0.6e18
+        let fill_amount: u128 = 500_000_000_000_000_000_000; // 500e18 (half)
+
+        // Deposits
+        apply_tx(&mut state, &dummy_tx(seller, 0, TxPayload::Deposit(Deposit {
+            tx_hash: [0u8; 32], account: seller, asset_id: 1,
+            amount: offer_amount, chain_id: default_chain_id(),
+        })), ts).unwrap();
+        apply_tx(&mut state, &dummy_tx(buyer, 0, TxPayload::Deposit(Deposit {
+            tx_hash: [1u8; 32], account: buyer, asset_id: 0,
+            amount: cons_amount, chain_id: default_chain_id(),
+        })), ts).unwrap();
+
+        // Create deal
+        apply_tx(&mut state, &dummy_tx(seller, 1, TxPayload::CreateDeal(CreateDeal {
+            deal_id: 100,
+            visibility: DealVisibility::Public,
+            taker: None,
+            offer: TradeAsset::Fungible { asset_id: 1, amount: offer_amount, chain_id: default_chain_id() },
+            consideration: TradeAsset::Fungible { asset_id: 0, amount: cons_amount, chain_id: default_chain_id() },
+            expires_at: None,
+            external_ref: None,
+        })), ts).unwrap();
+
+        // Buyer accepts HALF — fill 500e18 out of 1000e18
+        apply_tx(&mut state, &dummy_tx(buyer, 1, TxPayload::AcceptDeal(AcceptDeal {
+            deal_id: 100, amount: Some(fill_amount),
+        })), ts).unwrap();
+
+        let deal = state.get_deal(100).unwrap();
+        assert_eq!(deal.amount_filled, fill_amount);
+        assert_eq!(deal.status, DealStatus::Pending); // partially filled
+
+        // Buyer paid half the consideration: 0.3e18
+        let expected_cons_fill = cons_amount * fill_amount / offer_amount; // 300000000000000000
+        let buyer_eth = state.get_account_by_address(buyer).unwrap()
+            .balances.iter().find(|b| b.asset_id == 0).map(|b| b.amount).unwrap_or(0);
+        assert_eq!(buyer_eth, cons_amount - expected_cons_fill);
+
+        // Buyer got 500e18 tokens
+        let buyer_tokens = state.get_account_by_address(buyer).unwrap()
+            .balances.iter().find(|b| b.asset_id == 1).map(|b| b.amount).unwrap_or(0);
+        assert_eq!(buyer_tokens, fill_amount);
+    }
+
+    #[test]
+    fn test_mul_div_u128() {
+        // Basic case: no overflow
+        assert_eq!(mul_div_u128(100, 200, 50), Some(400));
+
+        // Case that triggers overflow: 6e17 * 1e21 = 6e38 > u128::MAX
+        let result = mul_div_u128(600_000_000_000_000_000, 1_000_000_000_000_000_000_000, 1_000_000_000_000_000_000_000);
+        assert_eq!(result, Some(600_000_000_000_000_000));
+
+        // Partial fill overflow: 6e17 * 5e20 / 1e21 = 3e17
+        let result = mul_div_u128(600_000_000_000_000_000, 500_000_000_000_000_000_000, 1_000_000_000_000_000_000_000);
+        assert_eq!(result, Some(300_000_000_000_000_000));
+
+        // Division by zero
+        assert_eq!(mul_div_u128(100, 200, 0), None);
+
+        // Edge: a=0
+        assert_eq!(mul_div_u128(0, u128::MAX, 1), Some(0));
     }
 }
