@@ -2,7 +2,7 @@ use axync_state::State;
 use axync_types::{
     AcceptDeal, Address, AssetId, Balance, BuyNft, CancelDeal, CancelNftListing, ChainId,
     CreateDeal, Deal, DealStatus, DealVisibility, Deposit, ListNft, NftListing, NftListingStatus,
-    Tx, TxPayload, Withdraw, ZERO_ADDRESS,
+    TradeAsset, Tx, TxPayload, Withdraw, ZERO_ADDRESS,
 };
 
 #[derive(Debug)]
@@ -80,7 +80,40 @@ fn apply_create_deal(
         return Err(StfError::DealAlreadyExists);
     }
 
-    let is_cross_chain = payload.chain_id_base != payload.chain_id_quote;
+    // V1: consideration must be Fungible
+    match &payload.consideration {
+        TradeAsset::Fungible { .. } => {}
+        TradeAsset::Escrowed { .. } => return Err(StfError::NotImplemented),
+    }
+
+    // Lock the maker's offered asset
+    match &payload.offer {
+        TradeAsset::Fungible { asset_id, amount, chain_id } => {
+            sub_balance(state, maker, *asset_id, *amount, *chain_id)?;
+        }
+        TradeAsset::Escrowed { escrow_listing_id } => {
+            let listing = state
+                .get_nft_listing_mut(*escrow_listing_id)
+                .ok_or(StfError::NftListingNotFound)?;
+            if listing.status != NftListingStatus::Active {
+                return Err(StfError::NftListingNotActive);
+            }
+            if listing.seller != maker {
+                return Err(StfError::Unauthorized);
+            }
+            listing.status = NftListingStatus::Reserved;
+        }
+    }
+
+    let offer_chain = offer_chain_id(&payload.offer, state);
+    let cons_chain = match &payload.consideration {
+        TradeAsset::Fungible { chain_id, .. } => Some(*chain_id),
+        TradeAsset::Escrowed { .. } => None,
+    };
+    let is_cross_chain = match (offer_chain, cons_chain) {
+        (Some(a), Some(b)) => a != b,
+        _ => true,
+    };
 
     let expires_at = payload.expires_at.map(|exp| {
         use axync_types::deal;
@@ -93,13 +126,9 @@ fn apply_create_deal(
         maker,
         taker: payload.taker,
         visibility: payload.visibility,
-        asset_base: payload.asset_base,
-        asset_quote: payload.asset_quote,
-        chain_id_base: payload.chain_id_base,
-        chain_id_quote: payload.chain_id_quote,
-        amount_base: payload.amount_base,
-        amount_remaining: payload.amount_base,
-        price_quote_per_base: payload.price_quote_per_base,
+        offer: payload.offer.clone(),
+        consideration: payload.consideration.clone(),
+        amount_filled: 0,
         status: DealStatus::Pending,
         created_at: block_timestamp,
         expires_at,
@@ -108,8 +137,16 @@ fn apply_create_deal(
     };
 
     state.upsert_deal(deal);
-
     Ok(())
+}
+
+fn offer_chain_id(offer: &TradeAsset, state: &State) -> Option<ChainId> {
+    match offer {
+        TradeAsset::Fungible { chain_id, .. } => Some(*chain_id),
+        TradeAsset::Escrowed { escrow_listing_id } => {
+            state.get_nft_listing(*escrow_listing_id).map(|l| l.nft_chain_id)
+        }
+    }
 }
 
 fn apply_accept_deal(
@@ -118,18 +155,8 @@ fn apply_accept_deal(
     payload: &AcceptDeal,
     block_timestamp: u64,
 ) -> Result<(), StfError> {
-    let (
-        maker_addr,
-        asset_base,
-        asset_quote,
-        chain_id_base,
-        chain_id_quote,
-        amount_remaining,
-        price_quote_per_base,
-        _expires_at,
-        _visibility,
-        _expected_taker,
-    ) = {
+    // Extract deal data (borrow state immutably first)
+    let (maker_addr, offer, consideration, _visibility, _expires_at, _expected_taker, amount_filled) = {
         let deal = state
             .get_deal(payload.deal_id)
             .ok_or(StfError::DealNotFound)?;
@@ -163,42 +190,71 @@ fn apply_accept_deal(
 
         (
             deal.maker,
-            deal.asset_base,
-            deal.asset_quote,
-            deal.chain_id_base,
-            deal.chain_id_quote,
-            deal.amount_remaining,
-            deal.price_quote_per_base,
-            deal.expires_at,
+            deal.offer.clone(),
+            deal.consideration.clone(),
             deal.visibility,
+            deal.expires_at,
             deal.taker,
+            deal.amount_filled,
         )
     };
 
-    let amount_to_fill = payload.amount.unwrap_or(amount_remaining);
-    if amount_to_fill == 0 || amount_to_fill > amount_remaining {
-        return Err(StfError::BalanceTooLow);
-    }
+    match (&offer, &consideration) {
+        // Fungible ↔ Fungible: supports partial fills
+        (
+            TradeAsset::Fungible { asset_id: offer_aid, amount: offer_amt, chain_id: offer_cid },
+            TradeAsset::Fungible { asset_id: cons_aid, amount: cons_amt, chain_id: cons_cid },
+        ) => {
+            let remaining = offer_amt - amount_filled;
+            let fill = payload.amount.unwrap_or(remaining);
+            if fill == 0 || fill > remaining {
+                return Err(StfError::BalanceTooLow);
+            }
 
-    let amount_quote = amount_to_fill
-        .checked_mul(price_quote_per_base)
-        .ok_or(StfError::Overflow)?;
+            // Scale consideration proportionally: (cons_amt * fill) / offer_amt
+            let consideration_fill = cons_amt
+                .checked_mul(fill)
+                .ok_or(StfError::Overflow)?
+                .checked_div(*offer_amt)
+                .ok_or(StfError::Overflow)?;
 
-    ensure_balance(state, maker_addr, asset_base, amount_to_fill, chain_id_base)?;
-    ensure_balance(state, taker, asset_quote, amount_quote, chain_id_quote)?;
+            // Taker pays consideration
+            sub_balance(state, taker, *cons_aid, consideration_fill, *cons_cid)?;
+            // Maker receives consideration
+            add_balance(state, maker_addr, *cons_aid, consideration_fill, *cons_cid);
+            // Taker receives offer (was already locked from maker at creation)
+            add_balance(state, taker, *offer_aid, fill, *offer_cid);
 
-    sub_balance(state, maker_addr, asset_base, amount_to_fill, chain_id_base)?;
-    sub_balance(state, taker, asset_quote, amount_quote, chain_id_quote)?;
+            let deal = state.get_deal_mut(payload.deal_id).ok_or(StfError::DealNotFound)?;
+            deal.amount_filled += fill;
+            if deal.amount_filled >= *offer_amt {
+                deal.status = DealStatus::Settled;
+            }
+        }
 
-    add_balance(state, maker_addr, asset_quote, amount_quote, chain_id_quote);
-    add_balance(state, taker, asset_base, amount_to_fill, chain_id_base);
+        // Escrowed ↔ Fungible: NFT/ERC20 from escrow for fungible payment. Full fill only.
+        (
+            TradeAsset::Escrowed { escrow_listing_id },
+            TradeAsset::Fungible { asset_id: cons_aid, amount: cons_amt, chain_id: cons_cid },
+        ) => {
+            // Taker pays full consideration
+            sub_balance(state, taker, *cons_aid, *cons_amt, *cons_cid)?;
+            // Maker receives payment
+            add_balance(state, maker_addr, *cons_aid, *cons_amt, *cons_cid);
 
-    let deal = state
-        .get_deal_mut(payload.deal_id)
-        .ok_or(StfError::DealNotFound)?;
-    deal.amount_remaining -= amount_to_fill;
-    if deal.amount_remaining == 0 {
-        deal.status = DealStatus::Settled;
+            // Mark the escrow listing as sold with taker as buyer
+            let listing = state
+                .get_nft_listing_mut(*escrow_listing_id)
+                .ok_or(StfError::NftListingNotFound)?;
+            listing.status = NftListingStatus::Sold;
+            listing.buyer = taker;
+
+            let deal = state.get_deal_mut(payload.deal_id).ok_or(StfError::DealNotFound)?;
+            deal.amount_filled = 1; // sentinel for escrowed deals
+            deal.status = DealStatus::Settled;
+        }
+
+        _ => return Err(StfError::NotImplemented),
     }
 
     Ok(())
@@ -209,18 +265,40 @@ fn apply_cancel_deal(
     caller: Address,
     payload: &CancelDeal,
 ) -> Result<(), StfError> {
-    let deal = state
-        .get_deal_mut(payload.deal_id)
-        .ok_or(StfError::DealNotFound)?;
+    // Read deal data first
+    let (maker, offer, amount_filled) = {
+        let deal = state
+            .get_deal(payload.deal_id)
+            .ok_or(StfError::DealNotFound)?;
 
-    if deal.status != DealStatus::Pending {
-        return Err(StfError::DealAlreadyClosed);
+        if deal.status != DealStatus::Pending {
+            return Err(StfError::DealAlreadyClosed);
+        }
+
+        if deal.maker != caller {
+            return Err(StfError::Unauthorized);
+        }
+
+        (deal.maker, deal.offer.clone(), deal.amount_filled)
+    };
+
+    // Refund the locked offer
+    match &offer {
+        TradeAsset::Fungible { asset_id, amount, chain_id } => {
+            let refund = amount - amount_filled;
+            if refund > 0 {
+                add_balance(state, maker, *asset_id, refund, *chain_id);
+            }
+        }
+        TradeAsset::Escrowed { escrow_listing_id } => {
+            // Un-reserve the listing
+            if let Some(listing) = state.get_nft_listing_mut(*escrow_listing_id) {
+                listing.status = NftListingStatus::Active;
+            }
+        }
     }
 
-    if deal.maker != caller {
-        return Err(StfError::Unauthorized);
-    }
-
+    let deal = state.get_deal_mut(payload.deal_id).ok_or(StfError::DealNotFound)?;
     deal.status = DealStatus::Cancelled;
 
     Ok(())
@@ -402,7 +480,7 @@ fn increment_nonce(state: &mut State, owner: Address) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axync_types::{Tx, TxKind, TxPayload};
+    use axync_types::{TradeAsset, Tx, TxKind, TxPayload};
 
     fn dummy_address(byte: u8) -> Address {
         [byte; 20]
@@ -594,12 +672,16 @@ mod tests {
                 deal_id: 42,
                 visibility: DealVisibility::Public,
                 taker: None,
-                asset_base: 0,
-                asset_quote: 1,
-                chain_id_base: default_chain_id(),
-                chain_id_quote: default_chain_id(),
-                amount_base: 1000,
-                price_quote_per_base: 100,
+                offer: TradeAsset::Fungible {
+                    asset_id: 0,
+                    amount: 1000,
+                    chain_id: default_chain_id(),
+                },
+                consideration: TradeAsset::Fungible {
+                    asset_id: 1,
+                    amount: 100000,
+                    chain_id: default_chain_id(),
+                },
                 expires_at: None,
                 external_ref: None,
             }),
@@ -608,18 +690,23 @@ mod tests {
 
         let deal = state.get_deal(42).unwrap();
         assert_eq!(deal.maker, maker);
-        assert_eq!(deal.amount_base, 1000);
-        assert_eq!(deal.amount_remaining, 1000);
+        assert_eq!(deal.amount_filled, 0);
         assert_eq!(deal.status, DealStatus::Pending);
+
+        // Maker's balance should be locked (10000 - 1000 = 9000)
+        let maker_account = state.get_account_by_address(maker).unwrap();
+        let balance = maker_account.balances.iter().find(|b| b.asset_id == 0).unwrap();
+        assert_eq!(balance.amount, 9000);
     }
 
     #[test]
-    fn test_accept_deal() {
+    fn test_accept_deal_fungible() {
         let mut state = State::new();
         let maker = dummy_address(1);
         let taker = dummy_address(2);
         let block_timestamp = 1000;
 
+        // Maker deposits 10000 of asset 0
         let maker_deposit = dummy_tx(
             maker,
             0,
@@ -633,6 +720,7 @@ mod tests {
         );
         apply_tx(&mut state, &maker_deposit, block_timestamp).unwrap();
 
+        // Taker deposits 100000 of asset 1
         let taker_deposit = dummy_tx(
             taker,
             0,
@@ -646,6 +734,7 @@ mod tests {
         );
         apply_tx(&mut state, &taker_deposit, block_timestamp).unwrap();
 
+        // Maker offers 1000 of asset 0 for 100000 of asset 1
         let create_deal = dummy_tx(
             maker,
             1,
@@ -653,18 +742,23 @@ mod tests {
                 deal_id: 42,
                 visibility: DealVisibility::Public,
                 taker: None,
-                asset_base: 0,
-                asset_quote: 1,
-                chain_id_base: default_chain_id(),
-                chain_id_quote: default_chain_id(),
-                amount_base: 1000,
-                price_quote_per_base: 100,
+                offer: TradeAsset::Fungible {
+                    asset_id: 0,
+                    amount: 1000,
+                    chain_id: default_chain_id(),
+                },
+                consideration: TradeAsset::Fungible {
+                    asset_id: 1,
+                    amount: 100000,
+                    chain_id: default_chain_id(),
+                },
                 expires_at: None,
                 external_ref: None,
             }),
         );
         apply_tx(&mut state, &create_deal, block_timestamp).unwrap();
 
+        // Taker accepts full deal
         let accept_deal = dummy_tx(
             taker,
             1,
@@ -677,26 +771,83 @@ mod tests {
 
         let deal = state.get_deal(42).unwrap();
         assert_eq!(deal.status, DealStatus::Settled);
-        assert_eq!(deal.amount_remaining, 0);
 
         let maker_account = state.get_account_by_address(maker).unwrap();
         let taker_account = state.get_account_by_address(taker).unwrap();
 
-        let maker_quote_balance = maker_account
-            .balances
-            .iter()
-            .find(|b| b.asset_id == 1)
-            .map(|b| b.amount)
-            .unwrap_or(0);
-        assert_eq!(maker_quote_balance, 100000);
+        // Maker: started with 10000, locked 1000, received 100000 of asset 1
+        let maker_asset0 = maker_account.balances.iter().find(|b| b.asset_id == 0).map(|b| b.amount).unwrap_or(0);
+        assert_eq!(maker_asset0, 9000); // 10000 - 1000 locked
+        let maker_asset1 = maker_account.balances.iter().find(|b| b.asset_id == 1).map(|b| b.amount).unwrap_or(0);
+        assert_eq!(maker_asset1, 100000);
 
-        let taker_base_balance = taker_account
-            .balances
-            .iter()
-            .find(|b| b.asset_id == 0)
-            .map(|b| b.amount)
-            .unwrap_or(0);
-        assert_eq!(taker_base_balance, 1000);
+        // Taker: received 1000 of asset 0, paid 100000 of asset 1
+        let taker_asset0 = taker_account.balances.iter().find(|b| b.asset_id == 0).map(|b| b.amount).unwrap_or(0);
+        assert_eq!(taker_asset0, 1000);
+        let taker_asset1 = taker_account.balances.iter().find(|b| b.asset_id == 1).map(|b| b.amount).unwrap_or(0);
+        assert_eq!(taker_asset1, 0);
+    }
+
+    #[test]
+    fn test_cancel_deal_refund() {
+        let mut state = State::new();
+        let maker = dummy_address(1);
+        let block_timestamp = 1000;
+
+        let deposit_tx = dummy_tx(
+            maker,
+            0,
+            TxPayload::Deposit(Deposit {
+                tx_hash: [0u8; 32],
+                account: maker,
+                asset_id: 0,
+                amount: 5000,
+                chain_id: default_chain_id(),
+            }),
+        );
+        apply_tx(&mut state, &deposit_tx, block_timestamp).unwrap();
+
+        let create_deal = dummy_tx(
+            maker,
+            1,
+            TxPayload::CreateDeal(CreateDeal {
+                deal_id: 1,
+                visibility: DealVisibility::Public,
+                taker: None,
+                offer: TradeAsset::Fungible {
+                    asset_id: 0,
+                    amount: 3000,
+                    chain_id: default_chain_id(),
+                },
+                consideration: TradeAsset::Fungible {
+                    asset_id: 1,
+                    amount: 9000,
+                    chain_id: default_chain_id(),
+                },
+                expires_at: None,
+                external_ref: None,
+            }),
+        );
+        apply_tx(&mut state, &create_deal, block_timestamp).unwrap();
+
+        // Balance after lock: 5000 - 3000 = 2000
+        let acct = state.get_account_by_address(maker).unwrap();
+        assert_eq!(acct.balances[0].amount, 2000);
+
+        // Cancel — should refund
+        let cancel = dummy_tx(
+            maker,
+            2,
+            TxPayload::CancelDeal(CancelDeal { deal_id: 1 }),
+        );
+        apply_tx(&mut state, &cancel, block_timestamp).unwrap();
+
+        let deal = state.get_deal(1).unwrap();
+        assert_eq!(deal.status, DealStatus::Cancelled);
+
+        // Balance restored: 2000 + 3000 = 5000
+        let acct = state.get_account_by_address(maker).unwrap();
+        assert_eq!(acct.balances[0].amount, 5000);
     }
 
     #[test]
