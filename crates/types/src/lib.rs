@@ -83,6 +83,8 @@ pub enum AssetType {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum NftListingStatus {
     Active,
+    /// Linked to a Deal — cannot be independently bought or cancelled
+    Reserved,
     Sold,
     Cancelled,
 }
@@ -147,19 +149,44 @@ pub struct Asset {
 // on different chains. This is managed in the asset registry (State or separate storage).
 // Example: USDC (asset_id=1) has different addresses on Ethereum, Polygon, Base, etc.
 
+/// One side of a trade — either a fungible balance in Vault or an asset escrowed on-chain.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub enum TradeAsset {
+    /// Fungible asset (ETH/ERC20) tracked in off-chain Vault balances.
+    Fungible {
+        asset_id: AssetId,
+        amount: u128,
+        chain_id: ChainId,
+    },
+    /// Asset locked in on-chain AxyncEscrow contract.
+    /// References an existing NftListing created by the watcher.
+    Escrowed {
+        escrow_listing_id: NftListingId,
+    },
+}
+
+impl TradeAsset {
+    pub fn chain_id(&self, get_listing_chain: impl Fn(NftListingId) -> Option<ChainId>) -> Option<ChainId> {
+        match self {
+            TradeAsset::Fungible { chain_id, .. } => Some(*chain_id),
+            TradeAsset::Escrowed { escrow_listing_id } => get_listing_chain(*escrow_listing_id),
+        }
+    }
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Deal {
     pub id: DealId,
+    #[serde(with = "serde_bytes")]
     pub maker: Address,
     pub taker: Option<Address>,
     pub visibility: DealVisibility,
-    pub asset_base: AssetId,
-    pub asset_quote: AssetId,
-    pub chain_id_base: ChainId,
-    pub chain_id_quote: ChainId,
-    pub amount_base: u128,
-    pub amount_remaining: u128,
-    pub price_quote_per_base: u128,
+    /// What the maker is selling (locked at deal creation)
+    pub offer: TradeAsset,
+    /// What the maker wants in return
+    pub consideration: TradeAsset,
+    /// For Fungible offers: how much has been filled (partial fills)
+    pub amount_filled: u128,
     pub status: DealStatus,
     pub created_at: u64,
     pub expires_at: Option<u64>,
@@ -219,12 +246,10 @@ pub struct CreateDeal {
     pub deal_id: DealId,
     pub visibility: DealVisibility,
     pub taker: Option<Address>,
-    pub asset_base: AssetId,
-    pub asset_quote: AssetId,
-    pub chain_id_base: ChainId,
-    pub chain_id_quote: ChainId,
-    pub amount_base: u128,
-    pub price_quote_per_base: u128,
+    /// What the maker is selling
+    pub offer: TradeAsset,
+    /// What the maker wants in return
+    pub consideration: TradeAsset,
     pub expires_at: Option<u64>,
     pub external_ref: Option<String>,
 }
