@@ -34,8 +34,6 @@ pub fn create_router(state: Arc<ApiState>) -> Router {
         vesting_reader: state.vesting_reader.clone(),
         escrow_reader: state.escrow_reader.clone(),
         nft_reader: state.nft_reader.clone(),
-        sablier_contracts: state.sablier_contracts.clone(),
-        hedgey_contracts: state.hedgey_contracts.clone(),
     });
 
     Router::new()

@@ -72,6 +72,9 @@ async fn block_production_task(sequencer: Arc<Sequencer>) {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Load .env file (silently ignore if missing)
+    dotenvy::dotenv().ok();
+
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
@@ -122,11 +125,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("Warning: ESCROW_CONTRACT not set, listings endpoints disabled");
     }
 
-    let sablier = config::sablier_contracts();
-    let hedgey = config::hedgey_contracts();
     println!("Marketplace RPC: {}", marketplace_rpc);
-    println!("Sablier contracts: {:?}", sablier);
-    println!("Hedgey contracts: {:?}", hedgey);
 
     // API state
     let api_state = Arc::new(ApiState {
@@ -136,8 +135,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         vesting_reader: Some(vesting_reader),
         escrow_reader,
         nft_reader: Some(nft_reader),
-        sablier_contracts: sablier,
-        hedgey_contracts: hedgey,
     });
 
     let app = create_router(api_state);

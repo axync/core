@@ -20,8 +20,6 @@ pub struct ApiState {
     pub vesting_reader: Option<Arc<crate::vesting::VestingReader>>,
     pub escrow_reader: Option<Arc<crate::escrow::EscrowReader>>,
     pub nft_reader: Option<Arc<crate::nft::NftReader>>,
-    pub sablier_contracts: Vec<String>,
-    pub hedgey_contracts: Vec<String>,
 }
 
 pub async fn get_account_balance(
@@ -1157,10 +1155,7 @@ pub async fn get_vesting_positions(
         format!("0x{}", address)
     };
 
-    let sablier_refs: Vec<&str> = state.sablier_contracts.iter().map(|s| s.as_str()).collect();
-    let hedgey_refs: Vec<&str> = state.hedgey_contracts.iter().map(|s| s.as_str()).collect();
-
-    let positions = reader.get_all_positions(&clean_addr, &sablier_refs, &hedgey_refs).await;
+    let positions = reader.get_all_positions(&clean_addr, &[], &[]).await;
     let total = positions.len();
 
     Ok(Json(VestingPositionsResponse {
@@ -1201,13 +1196,7 @@ pub async fn get_listings(
     for listing in listings {
         let nft_lower = listing.nft_contract.to_lowercase();
 
-        let platform = if state.sablier_contracts.iter().any(|c| c.to_lowercase() == nft_lower) {
-            Some("sablier".to_string())
-        } else if state.hedgey_contracts.iter().any(|c| c.to_lowercase() == nft_lower) {
-            Some("hedgey".to_string())
-        } else {
-            None
-        };
+        let platform: Option<String> = None;
 
         let (name, symbol) = if let Some(cached) = collection_cache.get(&nft_lower) {
             cached.clone()
@@ -1263,29 +1252,8 @@ pub async fn get_listing_detail(
     };
 
     // Try to fetch vesting info for known platform NFTs
-    let vesting = if let Some(reader) = state.vesting_reader.as_ref() {
-        let nft_lower = listing.nft_contract.to_lowercase();
-        let is_sablier = state.sablier_contracts.iter().any(|c| c.to_lowercase() == nft_lower);
-        let is_hedgey = state.hedgey_contracts.iter().any(|c| c.to_lowercase() == nft_lower);
-        let escrow_addr = escrow.contract_address();
-
-        if is_sablier {
-            reader.get_sablier_positions(&listing.nft_contract, escrow_addr)
-                .await
-                .ok()
-                .and_then(|positions| {
-                    positions.into_iter().find(|p| p.token_id == listing.token_id)
-                })
-        } else if is_hedgey {
-            reader.get_hedgey_positions(&listing.nft_contract, escrow_addr)
-                .await
-                .ok()
-                .and_then(|positions| {
-                    positions.into_iter().find(|p| p.token_id == listing.token_id)
-                })
-        } else {
-            None
-        }
+    let vesting = if let Some(_reader) = state.vesting_reader.as_ref() {
+        None
     } else {
         None
     };
