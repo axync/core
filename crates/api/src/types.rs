@@ -144,18 +144,67 @@ pub struct BalanceInfo {
     pub amount: u128,
 }
 
+/// JSON representation of a TradeAsset for API requests/responses
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(tag = "type")]
+pub enum TradeAssetJson {
+    #[serde(rename = "fungible")]
+    Fungible {
+        asset_id: AssetId,
+        #[serde(deserialize_with = "deserialize_u128_from_string")]
+        amount: u128,
+        chain_id: axync_types::ChainId,
+    },
+    #[serde(rename = "escrowed")]
+    Escrowed {
+        escrow_listing_id: u64,
+    },
+}
+
+impl TradeAssetJson {
+    pub fn from_trade_asset(ta: &axync_types::TradeAsset) -> Self {
+        match ta {
+            axync_types::TradeAsset::Fungible { asset_id, amount, chain_id } => {
+                TradeAssetJson::Fungible {
+                    asset_id: *asset_id,
+                    amount: *amount,
+                    chain_id: *chain_id,
+                }
+            }
+            axync_types::TradeAsset::Escrowed { escrow_listing_id } => {
+                TradeAssetJson::Escrowed {
+                    escrow_listing_id: *escrow_listing_id,
+                }
+            }
+        }
+    }
+
+    pub fn to_trade_asset(&self) -> axync_types::TradeAsset {
+        match self {
+            TradeAssetJson::Fungible { asset_id, amount, chain_id } => {
+                axync_types::TradeAsset::Fungible {
+                    asset_id: *asset_id,
+                    amount: *amount,
+                    chain_id: *chain_id,
+                }
+            }
+            TradeAssetJson::Escrowed { escrow_listing_id } => {
+                axync_types::TradeAsset::Escrowed {
+                    escrow_listing_id: *escrow_listing_id,
+                }
+            }
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DealDetailsResponse {
     pub deal_id: DealId,
     pub maker: Address,
     pub taker: Option<Address>,
-    pub asset_base: AssetId,
-    pub asset_quote: AssetId,
-    pub chain_id_base: axync_types::ChainId,
-    pub chain_id_quote: axync_types::ChainId,
-    pub amount_base: u128,
-    pub amount_remaining: u128,
-    pub price_quote_per_base: u128,
+    pub offer: TradeAssetJson,
+    pub consideration: TradeAssetJson,
+    pub amount_filled: u128,
     pub status: String,
     pub created_at: u64,
     pub expires_at: Option<u64>,
@@ -242,14 +291,8 @@ pub enum SubmitTransactionRequest {
         deal_id: DealId,
         visibility: String, // "Public" or "Direct"
         taker: Option<String>, // hex string
-        asset_base: AssetId,
-        asset_quote: AssetId,
-        chain_id_base: axync_types::ChainId,
-        chain_id_quote: axync_types::ChainId,
-        #[serde(deserialize_with = "deserialize_u128_from_string")]
-        amount_base: u128,
-        #[serde(deserialize_with = "deserialize_u128_from_string")]
-        price_quote_per_base: u128,
+        offer: TradeAssetJson,
+        consideration: TradeAssetJson,
         expires_at: Option<u64>,
         external_ref: Option<String>,
         nonce: u64,

@@ -471,6 +471,19 @@ impl Sequencer {
                         tree.add_leaf(leaf);
                     }
                 }
+                axync_types::TxPayload::AcceptDeal(accept) => {
+                    // If this AcceptDeal settled an escrowed offer, include release leaf
+                    if let Some(deal) = state.get_deal(accept.deal_id) {
+                        if deal.status == axync_types::DealStatus::Settled {
+                            if let axync_types::TradeAsset::Escrowed { escrow_listing_id } = &deal.offer {
+                                if let Some(listing) = state.get_nft_listing(*escrow_listing_id) {
+                                    let leaf = Self::compute_release_leaf(&listing);
+                                    tree.add_leaf(leaf);
+                                }
+                            }
+                        }
+                    }
+                }
                 _ => {}
             }
         }
@@ -511,7 +524,7 @@ impl Sequencer {
 
         match apply_block(&mut state, &block.transactions, block.timestamp) {
             Ok(()) => {
-                // Record BuyNft/Withdraw → block_id mappings for proof generation
+                // Record BuyNft/AcceptDeal/Withdraw → block_id mappings for proof generation
                 {
                     let mut sold_map = self.listing_sold_block.lock().unwrap();
                     let mut wd_map = self.withdrawal_block.lock().unwrap();
@@ -519,6 +532,16 @@ impl Sequencer {
                         match &tx.payload {
                             axync_types::TxPayload::BuyNft(buy) => {
                                 sold_map.insert(buy.listing_id, block.id);
+                            }
+                            axync_types::TxPayload::AcceptDeal(accept) => {
+                                // Record escrowed deal settlements for proof generation
+                                if let Some(deal) = state.get_deal(accept.deal_id) {
+                                    if deal.status == axync_types::DealStatus::Settled {
+                                        if let axync_types::TradeAsset::Escrowed { escrow_listing_id } = &deal.offer {
+                                            sold_map.insert(*escrow_listing_id, block.id);
+                                        }
+                                    }
+                                }
                             }
                             axync_types::TxPayload::Withdraw(w) => {
                                 let key = format!("{}:{}:{}:{}", hex::encode(tx.from), w.asset_id, w.amount, w.chain_id);
@@ -638,6 +661,21 @@ impl Sequencer {
                         tree.add_leaf(leaf);
                     }
                 }
+                axync_types::TxPayload::AcceptDeal(accept) => {
+                    if let Some(deal) = state.get_deal(accept.deal_id) {
+                        if deal.status == axync_types::DealStatus::Settled {
+                            if let axync_types::TradeAsset::Escrowed { escrow_listing_id } = &deal.offer {
+                                if let Some(listing) = state.get_nft_listing(*escrow_listing_id) {
+                                    let leaf = Self::compute_release_leaf(&listing);
+                                    if *escrow_listing_id == listing_id {
+                                        target_leaf_index = Some(tree.len());
+                                    }
+                                    tree.add_leaf(leaf);
+                                }
+                            }
+                        }
+                    }
+                }
                 _ => {}
             }
         }
@@ -645,7 +683,7 @@ impl Sequencer {
         drop(state);
 
         let leaf_index = target_leaf_index
-            .ok_or_else(|| SequencerError::StorageError("BuyNft tx not found in block".to_string()))?;
+            .ok_or_else(|| SequencerError::StorageError("Release tx not found in block".to_string()))?;
 
         let root = tree.root().map_err(|e| {
             SequencerError::ProverError(format!("Failed to compute root: {:?}", e))
@@ -689,6 +727,18 @@ impl Sequencer {
                     if let Some(listing) = state.get_nft_listing(buy.listing_id) {
                         let leaf = Self::compute_release_leaf(&listing);
                         tree.add_leaf(leaf);
+                    }
+                }
+                axync_types::TxPayload::AcceptDeal(accept) => {
+                    if let Some(deal) = state.get_deal(accept.deal_id) {
+                        if deal.status == axync_types::DealStatus::Settled {
+                            if let axync_types::TradeAsset::Escrowed { escrow_listing_id } = &deal.offer {
+                                if let Some(listing) = state.get_nft_listing(*escrow_listing_id) {
+                                    let leaf = Self::compute_release_leaf(&listing);
+                                    tree.add_leaf(leaf);
+                                }
+                            }
+                        }
                     }
                 }
                 _ => {}

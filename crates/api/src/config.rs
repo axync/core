@@ -15,15 +15,6 @@ fn env_opt(key: &str) -> Option<String> {
     std::env::var(key).ok().filter(|s| !s.is_empty())
 }
 
-/// Parse a comma-separated env var into a Vec<String>
-fn env_list(key: &str, default: &str) -> Vec<String> {
-    std::env::var(key)
-        .unwrap_or_else(|_| default.to_string())
-        .split(',')
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect()
-}
 
 // ── Server ──────────────────────────────────────────────
 
@@ -72,14 +63,6 @@ pub fn marketplace_rpc() -> String {
 
 pub fn escrow_contract() -> Option<String> {
     env_opt("ESCROW_CONTRACT")
-}
-
-pub fn sablier_contracts() -> Vec<String> {
-    env_list("SABLIER_CONTRACTS", "")
-}
-
-pub fn hedgey_contracts() -> Vec<String> {
-    env_list("HEDGEY_CONTRACTS", "")
 }
 
 // ── Watcher / Chains ────────────────────────────────────

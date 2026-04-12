@@ -218,13 +218,17 @@ mod tests {
             id: 42,
             maker,
             taker: None,
-            asset_base: 0,
-            asset_quote: 1,
-            chain_id_base: axync_types::chain_ids::ETHEREUM,
-            chain_id_quote: axync_types::chain_ids::ETHEREUM,
-            amount_base: 1000,
-            amount_remaining: 1000,
-            price_quote_per_base: 100,
+            offer: axync_types::TradeAsset::Fungible {
+                asset_id: 0,
+                amount: 1000,
+                chain_id: axync_types::chain_ids::ETHEREUM,
+            },
+            consideration: axync_types::TradeAsset::Fungible {
+                asset_id: 1,
+                amount: 100000,
+                chain_id: axync_types::chain_ids::ETHEREUM,
+            },
+            amount_filled: 0,
             status: DealStatus::Pending,
             visibility: DealVisibility::Public,
             created_at: 1000,
@@ -238,7 +242,7 @@ mod tests {
 
         assert_eq!(retrieved.id, 42);
         assert_eq!(retrieved.maker, maker);
-        assert_eq!(retrieved.amount_base, 1000);
+        assert_eq!(retrieved.amount_filled, 0);
     }
 
     #[test]
@@ -277,13 +281,17 @@ mod tests {
                 id: i,
                 maker,
                 taker: None,
-                asset_base: 0,
-                asset_quote: 1,
-                chain_id_base: axync_types::chain_ids::ETHEREUM,
-                chain_id_quote: axync_types::chain_ids::ETHEREUM,
-                amount_base: 1000,
-                amount_remaining: 1000,
-                price_quote_per_base: 100,
+                offer: axync_types::TradeAsset::Fungible {
+                    asset_id: 0,
+                    amount: 1000,
+                    chain_id: axync_types::chain_ids::ETHEREUM,
+                },
+                consideration: axync_types::TradeAsset::Fungible {
+                    asset_id: 1,
+                    amount: 100000,
+                    chain_id: axync_types::chain_ids::ETHEREUM,
+                },
+                amount_filled: 0,
                 status: DealStatus::Pending,
                 visibility: DealVisibility::Public,
                 created_at: 1000,

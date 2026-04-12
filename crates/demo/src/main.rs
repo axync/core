@@ -164,12 +164,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             deal_id: 42,
             visibility: DealVisibility::Public,
             taker: None,
-            asset_base: btc,
-            asset_quote: usdc,
-            chain_id_base: base_chain,
-            chain_id_quote: ethereum_chain,
-            amount_base: 1_000,        // 0.01 BTC
-            price_quote_per_base: 100, // 1 BTC = 100 USDC
+            offer: axync_types::TradeAsset::Fungible {
+                asset_id: btc,
+                amount: 1_000,  // 0.01 BTC
+                chain_id: base_chain,
+            },
+            consideration: axync_types::TradeAsset::Fungible {
+                asset_id: usdc,
+                amount: 100_000, // 1.0 USDC (1000 * 100)
+                chain_id: ethereum_chain,
+            },
             expires_at: None,
             external_ref: None,
         }),
@@ -283,7 +287,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Some(t) = deal.taker {
             println!("         Taker: {}", format_address(&t));
         }
-        println!("         Amount remaining: {}", deal.amount_remaining);
+        println!("         Amount filled: {}", deal.amount_filled);
     }
     println!();
 
