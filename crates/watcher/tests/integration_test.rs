@@ -29,12 +29,14 @@ fn create_test_chain_config(vault_contract_address: String) -> ChainConfig {
         chain_id: HARDHAT_CHAIN_ID,
         rpc_url: HARDHAT_RPC.to_string(),
         vault_contract_address,
+        escrow_contract_address: None,
         required_confirmations: 0, // Hardhat doesn't need confirmations for local testing
         poll_interval_seconds: 1,
         rpc_timeout_seconds: 10,
         max_retries: 3,
         retry_delay_seconds: 1,
         reorg_safety_blocks: 0, // No reorgs in Hardhat local node
+        start_block: 0,
     }
 }
 
