@@ -336,15 +336,6 @@ pub struct SubmitTransactionResponse {
     pub status: String,
 }
 
-// ── Vesting marketplace types ──
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct VestingPositionsResponse {
-    pub address: String,
-    pub positions: Vec<crate::vesting::VestingPosition>,
-    pub total: usize,
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ListingsResponse {
     pub listings: Vec<EnrichedListing>,
@@ -357,14 +348,13 @@ pub struct EnrichedListing {
     pub listing: crate::escrow::Listing,
     pub nft_name: String,
     pub nft_symbol: String,
-    pub platform: Option<String>,  // "sablier", "hedgey", or None for generic
+    pub platform: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ListingDetailResponse {
     pub listing: crate::escrow::Listing,
     pub nft: Option<crate::nft::NftMetadata>,
-    pub vesting: Option<crate::vesting::VestingPosition>,
 }
 
 // ── Generic NFT discovery types ──

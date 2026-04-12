@@ -17,7 +17,6 @@ pub struct ApiState {
     pub sequencer: Arc<Sequencer>,
     pub storage: Option<Arc<dyn Storage>>,
     pub rate_limit_state: Option<Arc<crate::middleware::RateLimitState>>,
-    pub vesting_reader: Option<Arc<crate::vesting::VestingReader>>,
     pub escrow_reader: Option<Arc<crate::escrow::EscrowReader>>,
     pub nft_reader: Option<Arc<crate::nft::NftReader>>,
 }
@@ -1131,40 +1130,6 @@ pub async fn submit_transaction(
     }
 }
 
-// ══════════════════════════════════════════════
-// ██  VESTING MARKETPLACE ENDPOINTS
-// ══════════════════════════════════════════════
-
-pub async fn get_vesting_positions(
-    State(state): State<Arc<ApiState>>,
-    Path(address): Path<String>,
-) -> Result<Json<VestingPositionsResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let reader = state.vesting_reader.as_ref().ok_or_else(|| {
-        (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(ErrorResponse {
-                error: "VestingNotConfigured".to_string(),
-                message: "Vesting reader not configured".to_string(),
-            }),
-        )
-    })?;
-
-    let clean_addr = if address.starts_with("0x") {
-        address.clone()
-    } else {
-        format!("0x{}", address)
-    };
-
-    let positions = reader.get_all_positions(&clean_addr, &[], &[]).await;
-    let total = positions.len();
-
-    Ok(Json(VestingPositionsResponse {
-        address: clean_addr,
-        positions,
-        total,
-    }))
-}
-
 pub async fn get_listings(
     State(state): State<Arc<ApiState>>,
 ) -> Result<Json<ListingsResponse>, (StatusCode, Json<ErrorResponse>)> {
@@ -1251,14 +1216,7 @@ pub async fn get_listing_detail(
         None
     };
 
-    // Try to fetch vesting info for known platform NFTs
-    let vesting = if let Some(_reader) = state.vesting_reader.as_ref() {
-        None
-    } else {
-        None
-    };
-
-    Ok(Json(ListingDetailResponse { listing, nft, vesting }))
+    Ok(Json(ListingDetailResponse { listing, nft }))
 }
 
 /// Discover NFTs owned by address from arbitrary contracts

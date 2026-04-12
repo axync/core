@@ -53,7 +53,7 @@ pub fn prover_config() -> ProverConfig {
     }
 }
 
-// ── Marketplace / Vesting ───────────────────────────────
+// ── Marketplace ─────────────────────────────────────────
 
 pub fn marketplace_rpc() -> String {
     env_opt("MARKETPLACE_RPC_URL")
