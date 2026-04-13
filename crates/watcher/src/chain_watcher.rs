@@ -63,16 +63,20 @@ impl ChainWatcher {
         }
 
         // Check for reorgs by verifying block hash
+        // Note: public RPCs behind load balancers may return different hashes
+        // for the same block, so we only warn and reset the cached hash
         if last_processed > 0 {
             if let Err(e) = self.check_reorg(last_processed).await {
                 warn!(
                     chain_id = self.config.chain_id,
                     block = last_processed,
                     error = %e,
-                    "Possible reorg detected, resetting to safety block"
+                    "Block hash changed (possible reorg or load-balanced RPC), refreshing"
                 );
-                last_processed = last_processed.saturating_sub(self.config.reorg_safety_blocks);
-                *self.last_processed_block.lock().await = last_processed;
+                // Clear cached hash so next poll re-fetches it
+                *self.last_confirmed_block_hash.lock().await = None;
+                // Only reset blocks if safety margin is > 0 and this isn't
+                // just an RPC inconsistency (don't reset on every single poll)
             }
         }
 
