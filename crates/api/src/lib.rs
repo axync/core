@@ -2,7 +2,6 @@ mod handlers;
 mod middleware;
 mod routes;
 mod types;
-pub mod vesting;
 pub mod escrow;
 pub mod nft;
 

@@ -115,7 +115,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Marketplace readers
     let marketplace_rpc = config::marketplace_rpc();
-    let vesting_reader = Arc::new(axync_api::vesting::VestingReader::new(marketplace_rpc.clone()));
     let nft_reader = Arc::new(axync_api::nft::NftReader::new(marketplace_rpc.clone()));
 
     let escrow_reader = config::escrow_contract().map(|addr| {
@@ -132,7 +131,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         sequencer: sequencer.clone(),
         storage: Some(storage_trait),
         rate_limit_state: Some(rate_limit_state),
-        vesting_reader: Some(vesting_reader),
         escrow_reader,
         nft_reader: Some(nft_reader),
     });
