@@ -31,3 +31,6 @@ docker-compose.local.yml
 
 data
 .DS_Store
+
+# Internal documentation (local only)
+docs/
