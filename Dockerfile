@@ -1,10 +1,10 @@
 # Build stage
-FROM rust:1.82-slim-bookworm AS builder
+FROM rust:1.86-slim-bookworm AS builder
 
 WORKDIR /app
 
 # Install build deps
-RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y pkg-config clang libssl-dev && rm -rf /var/lib/apt/lists/*
 
 # Copy manifests first for cache
 COPY Cargo.toml Cargo.lock ./
